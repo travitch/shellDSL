@@ -69,6 +69,7 @@ data Stream = StreamOut
             | StreamAppend FilePath
             | StreamFD Int
             | StreamProc Async
+            | StreamPipe
             deriving (Eq, Ord, Show)
 
 -- | A specification of stream mappings.
@@ -132,11 +133,10 @@ capture c = BWord [BCommand c]
 data CommandSpec =
   CommandSpec { commandName :: BWord
               , commandArguments :: [BWord]
-              , commandStreams :: StreamSpec
               }
 
 data Shell (a :: Token) where
-  RunCommand :: CommandSpec -> Shell Command
+  RunCommand :: Maybe (Shell Command) -> CommandSpec -> StreamSpec -> Shell Command
   -- ^ Extract an exit code result
   SubShell :: [SomeShell] -> StreamSpec -> Shell Command
   -- ^ Run a list of commands in a subshell.  The exitcode is
@@ -162,7 +162,7 @@ modifyStreamSpec :: Shell Command -> (StreamSpec -> StreamSpec) -> Shell Command
 modifyStreamSpec c f =
   case c of
     SubShell cmds spec -> SubShell cmds (f spec)
-    RunCommand cspec -> RunCommand cspec { commandStreams = f (commandStreams cspec) }
+    RunCommand mpred cmd spec -> RunCommand mpred cmd (f spec)
     If cases melse spec -> If cases melse (f spec)
     While cond body spec -> While cond body (f spec)
     Until cond body spec -> Until cond body (f spec)
@@ -214,11 +214,11 @@ wait :: Async -> ShellM Result
 wait = undefined
 
 command :: BWord -> [BWord] -> Shell Command
-command cmd args =
-  RunCommand CommandSpec { commandName = cmd
-                         , commandArguments = args
-                         , commandStreams = mempty
-                         }
+command cmd args = RunCommand Nothing cspec mempty
+  where
+    cspec = CommandSpec { commandName = cmd
+                        , commandArguments = args
+                        }
 
 -- | A token representing the result of a command.
 --
