@@ -136,9 +136,13 @@ data CommandSpec =
               }
 
 data Shell (a :: Token) where
-  RunCommand :: Maybe (Shell Command) -> CommandSpec -> StreamSpec -> Shell Command
-  -- ^ Extract an exit code result
-  SubShell :: [SomeShell] -> StreamSpec -> Shell Command
+  RunCommand :: CommandSpec -> StreamSpec -> Shell Command
+  -- ^ A simple command
+  And :: SomeShell -> Shell Command -> Shell Command
+  Or :: SomeShell -> Shell Command -> Shell Command
+  Pipe :: Shell Command -> Shell Command -> Shell Command
+  Sequence :: SomeShell -> Shell Command -> Shell Command
+  SubShell :: Shell Command -> StreamSpec -> Shell Command
   -- ^ Run a list of commands in a subshell.  The exitcode is
   -- available, as is stdout/stderr.  Note, updates to the environment
   -- of subshells do not propagate to parents.
@@ -162,11 +166,15 @@ modifyStreamSpec :: Shell Command -> (StreamSpec -> StreamSpec) -> Shell Command
 modifyStreamSpec c f =
   case c of
     SubShell cmds spec -> SubShell cmds (f spec)
-    RunCommand mpred cmd spec -> RunCommand mpred cmd (f spec)
+    RunCommand cmd spec -> RunCommand cmd (f spec)
     If cases melse spec -> If cases melse (f spec)
     While cond body spec -> While cond body (f spec)
     Until cond body spec -> Until cond body (f spec)
     For var ex body spec -> For var ex body (f spec)
+    And lhs rhs -> And lhs (modifyStreamSpec rhs f)
+    Or lhs rhs -> Or lhs (modifyStreamSpec rhs f)
+    Pipe lhs rhs -> Pipe lhs (modifyStreamSpec rhs f)
+    Sequence lhs rhs -> Sequence lhs (modifyStreamSpec rhs f)
 
 type Block = [SomeShell]
 
@@ -214,7 +222,7 @@ wait :: Async -> ShellM Result
 wait = undefined
 
 command :: BWord -> [BWord] -> Shell Command
-command cmd args = RunCommand Nothing cspec mempty
+command cmd args = RunCommand cspec mempty
   where
     cspec = CommandSpec { commandName = cmd
                         , commandArguments = args
@@ -235,27 +243,28 @@ data Token = Command
 -- "owns" the command resulting from the ||| operator is referenced by
 -- the RHS command.
 (|||) :: Shell Command -> Shell Command -> Shell Command
-src ||| sink = undefined
+src ||| sink = Pipe src $ modifyStreamSpec sink $ \s ->
+  s { ssSpecs = M.insert 1 StreamPipe (ssSpecs s) }
 
 -- | Sequence commands
-(#) :: Shell Command -> Shell Command -> Shell Command
-(#) = undefined
+(#) :: Shell a -> Shell Command -> Shell Command
+c1 # c2 = Sequence (SomeShell c1) c2
 
 -- | Redirect stdout, overwriting the target file
 (|>) :: Shell Command -> FilePath -> Shell Command
-(|>) c fp =
+c |> fp =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 1 (StreamFile fp) (ssSpecs s) }
 
 -- | Redirect stout, appending to the target file
 (|>>) :: Shell Command -> FilePath -> Shell Command
-(|>>) c fp =
+c |>> fp =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 1 (StreamAppend fp) (ssSpecs s) }
 
 (<|) :: Shell Command -> FilePath -> Shell Command
-(<|) c fp =
+c <| fp =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 0 (StreamFile fp) (ssSpecs s) }
 
 -- | Redirect the first fd to the second fd
 (@>) :: Shell Command -> (Int, Int) -> Shell Command
-(@>) c (src, dst) =
+c @> (src, dst) =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert src (StreamFD dst) (ssSpecs s) }
