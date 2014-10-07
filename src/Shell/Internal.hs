@@ -6,10 +6,11 @@
 module Shell.Internal (
   command,
   run,
+  env,
   background,
   wait,
-  env,
-  unsafeEnv,
+  envRef,
+  unsafeEnvRef,
   capture,
   (|||),
   (#),
@@ -17,6 +18,7 @@ module Shell.Internal (
   (|>>),
   (<|),
   (@>),
+  subshell,
   -- * Internal
   SomeShell(..),
   ShellState(..),
@@ -32,6 +34,7 @@ import qualified Data.Map as M
 import Data.Monoid
 import Data.Sequence ( Seq )
 import qualified Data.Sequence as Seq
+import qualified Data.Set as S
 import Data.String
 
 data ShellState =
@@ -111,8 +114,8 @@ instance Monoid BWord where
 -- | Create a reference to an environment variable.  The script
 -- generator will check to ensure that the variable MUST be defined.
 -- If the variable might not be defined, script compilation will fail.
-env :: String -> BWord
-env s = BWord [BVariable s]
+envRef :: String -> BWord
+envRef s = BWord [BVariable s]
 
 -- | Like 'env', but there is no static check to ensure the variable
 -- is defined.  Use this if you are really sure, or if the environment
@@ -121,14 +124,15 @@ env s = BWord [BVariable s]
 -- Preferably, you could add conditional assignments (if not defined
 -- ...) after your @source@ or similar call to ensure that a value
 -- will be set.
-unsafeEnv :: String -> BWord
-unsafeEnv s = BWord [BUnsafeVariable s]
+unsafeEnvRef :: String -> BWord
+unsafeEnvRef s = BWord [BUnsafeVariable s]
 
 -- | Run the given command in a subshell, capturing its output as a string.
 --
 -- When the command is run, you cannot retrieve its exit status.  If
 -- you require that, explicitly run the command with 'subshell' and
--- manually capture its output.
+-- manually capture its output.  It is not necessary to use 'subshell'
+-- and 'capture' together.
 capture :: Shell Command -> BWord
 capture c = BWord [BCommand c]
 
@@ -204,7 +208,7 @@ data Result = Result Int
 data Async = Async Int
            deriving (Eq, Ord, Show)
 
-addCommand :: Shell Command -> ShellM Int
+addCommand :: Shell a -> ShellM Int
 addCommand c = do
   cid <- Seq.length <$> MS.gets sCommands
   MS.modify $ \s -> s { sCommands = sCommands s Seq.|> SomeShell c  }
@@ -220,8 +224,29 @@ run c = do
   cid <- addCommand c
   return $ Result cid
 
+-- | Modify the environment
+--
+-- You can modify the environment from 'run', but using 'env' tracks
+-- the current environment variables and can check to ensure
+-- environment variable references are defined statically.
+--
+-- Bash can report undefined variable uses (and we generate bash to
+-- enable those warnings), but static information can be nice.
+env :: Shell Env -> ShellM ()
+env e = do
+  _ <- addCommand e
+  return ()
+
+-- | Wait on an asynchronous/backgrounded task.
+--
+-- The call to wait is synchronous and returns an exit code
+--
+-- FIXME: Result is not the right return value here since we can't use
+-- this to access stdout/stderr.  We can only get an exit code.
 wait :: Async -> ShellM Result
-wait = undefined
+wait a = do
+  rid <- addCommand (Wait a)
+  return $ Result rid
 
 command :: BWord -> [BWord] -> Shell Command
 command cmd args = RunCommand cspec mempty
@@ -270,3 +295,7 @@ c <| fp =
 (@>) :: Shell Command -> (Int, Int) -> Shell Command
 c @> (src, dst) =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert src (StreamFD dst) (ssSpecs s) }
+
+-- | Wrap the given command in a subshell
+subshell :: Shell Command -> Shell Command
+subshell c = SubShell c mempty
