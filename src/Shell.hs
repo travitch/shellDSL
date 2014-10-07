@@ -1,19 +1,25 @@
 module Shell (
   Shell,
-  command,
+  -- * Running things
   run,
-  env,
   background,
   wait,
+  setEnv,
+  unsetEnv,
+  -- * Referencing things
   envRef,
   unsafeEnvRef,
   capture,
-  subshell,
+  -- * Commands
+  Command,
+  command,
   (|||),
   (#),
   (|>),
   (|>>),
-  (@>)
+  (<|),
+  (@>),
+  subshell
   ) where
 
 import Shell.Internal

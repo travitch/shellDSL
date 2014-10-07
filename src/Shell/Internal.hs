@@ -1,13 +1,18 @@
 {-# LANGUAGE DeriveFunctor #-}
 module Shell.Internal (
-  command,
+  -- * Running things
   run,
-  env,
   background,
   wait,
+  setEnv,
+  unsetEnv,
+  -- * Strings and names
   envRef,
   unsafeEnvRef,
   capture,
+  -- Commands
+  Command,
+  command,
   (|||),
   (#),
   (|>),
@@ -210,27 +215,15 @@ while c body = do
   body' <- evalBody body
   FR.liftF (While uid c body' ())
 
+setEnv :: String -> BWord -> ShellM ()
+setEnv name val = do
+  uid <- takeId
+  FR.liftF (SetEnv uid name val ())
 
--- | Modify the environment
---
--- You can modify the environment from 'run', but using 'env' tracks
--- the current environment variables and can check to ensure
--- environment variable references are defined statically.
---
--- Bash can report undefined variable uses (and we generate bash to
--- enable those warnings), but static information can be nice.
--- env :: Shell Env -> ShellM ()
--- env e = do
---   _ <- addCommand e
---   return ()
-env=undefined
-
--- FIXME: To make this work, we need two different notions.  The
--- sequence of allocated uniques and the recorded AST.  The recorded
--- AST has the actual structure (so a while statement "contains" its
--- constituent elements instead of having them flattened into a
--- sequence).  To do this, processing the body of a nested statement
--- needs to create a new context to record the children.
+unsetEnv :: String -> ShellM ()
+unsetEnv name = do
+  uid <- takeId
+  FR.liftF (UnsetEnv uid name ())
 
 -- | Wait on an asynchronous/backgrounded task.
 --
