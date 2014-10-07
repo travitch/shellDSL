@@ -53,9 +53,6 @@ evalBody body = do
   MS.put (ShellState local)
   return body'
 
--- newtype ShellM a = ShellM (MS.State ShellState a)
---                  deriving (Applicative, Functor, Monad, MS.MonadState ShellState)
-
 -- Ways to reference input streams:
 --
 -- * Named file
@@ -260,13 +257,15 @@ command cmd args = Command cspec mempty
 -- The LHS command is implicitly made asynchronous.  The RHS command
 -- "owns" the command resulting from the ||| operator is referenced by
 -- the RHS command.
--- (|||) :: Shell a -> Shell a -> Shell Command
-src ||| sink = undefined -- Pipe src $ modifyStreamSpec sink $ \s ->
-  -- s { ssSpecs = M.insert 1 StreamPipe (ssSpecs s) }
+(|||) :: Command -> Command -> Command
+src ||| sink =
+  Pipe (modifyStreamSpec src (pipeStream 1)) (modifyStreamSpec sink (pipeStream 0))
+  where
+    pipeStream i s = s { ssSpecs = M.insert i StreamPipe (ssSpecs s) }
 
 -- | Sequence commands
--- (#) :: Shell a -> Shell a -> Shell Command
-c1 # c2 = undefined -- Sequence (SomeShell c1) c2
+(#) :: Command -> Command -> Command
+(#) = Sequence
 
 -- | Redirect stdout, overwriting the target file
 (|>) :: Command -> FilePath -> Command
