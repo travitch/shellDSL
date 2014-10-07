@@ -18,6 +18,7 @@ main = do
     run $ command "wc" ["-l", "/etc/fstab"] @> (2, 1) |> "/tmp/fscount"
     h1 <- background $ command "md5sum" ["/dev/mem"]
     wait h1
+    return ()
   putStrLn script
 
 {-

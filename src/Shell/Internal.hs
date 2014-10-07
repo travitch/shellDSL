@@ -21,6 +21,8 @@ module Shell.Internal (
   (@>),
   subshell,
   -- * Internal
+  Result(..),
+  Async(..),
   ShellState(..),
   ShellF(..),
   Shell,
@@ -193,7 +195,6 @@ data Result = Result Int
 -- its PID, or reference stdout or stderr
 data Async = Async Int
            deriving (Eq, Ord, Show)
-
 
 background :: Command -> ShellM Async
 background c = do
