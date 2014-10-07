@@ -66,7 +66,6 @@ data Stream = StreamOut
             | StreamFile FilePath
             | StreamAppend FilePath
             | StreamFD Int
-            | StreamProc Async
             | StreamPipe
             deriving (Eq, Ord, Show)
 
@@ -153,17 +152,19 @@ data Command = Command CommandSpec StreamSpec
              | SubShell Command StreamSpec
              deriving (Eq, Ord, Show)
 
-data ShellF next = RunSync Command next
-                 | RunAsync Command next
-                 | While Condition Shell next
-                 | Until Condition Shell next
-                 | If [(Condition, Shell)] (Maybe Shell) next
-                 | SubBlock Shell next
+type UID = Int
+
+data ShellF next = RunSync UID Command next
+                 | RunAsync UID Command next
+                 | While UID Condition Shell next
+                 | Until UID Condition Shell next
+                 | If UID [(Condition, Shell)] (Maybe Shell) next
+                 | SubBlock UID Shell next
                    -- ^ For block-level subshells
-                 | Wait Async next
-                 | GetExitCode Result next
-                 | UnsetEnv String next
-                 | SetEnv String BWord next
+                 | Wait UID Async next
+                 | GetExitCode UID Result next
+                 | UnsetEnv UID String next
+                 | SetEnv UID String BWord next
                  | Done
                  deriving (Eq, Show, Functor)
 
@@ -194,20 +195,23 @@ data Async = Async Int
 
 background :: Command -> ShellM Async
 background c = do
-  res <- Async <$> takeId
-  FR.liftF (RunAsync c res)
+  uid <- takeId
+  let res = Async uid
+  FR.liftF (RunAsync uid c res)
   return res
 
 run :: Command -> ShellM Result
 run c = do
-  res <- Result <$> takeId
-  FR.liftF (RunSync c res)
+  uid <- takeId
+  let res = Result uid
+  FR.liftF (RunSync uid c res)
   return res
 
 while :: Condition -> ShellM () -> ShellM ()
 while c body = do
+  uid <- takeId
   body' <- evalBody body
-  FR.liftF (While c body' ())
+  FR.liftF (While uid c body' ())
 
 
 -- | Modify the environment
@@ -239,8 +243,9 @@ env=undefined
 -- this to access stdout/stderr.  We can only get an exit code.
 wait :: Async -> ShellM Result
 wait a = do
-  res <- Result <$> takeId
-  FR.liftF (Wait a res)
+  uid <- takeId
+  let res = Result uid
+  FR.liftF (Wait uid a res)
   return res
 
 command :: BWord -> [BWord] -> Command
@@ -249,15 +254,6 @@ command cmd args = Command cspec mempty
     cspec = CommandSpec { commandName = cmd
                         , commandArguments = args
                         }
-
--- | A token representing the result of a command.
---
--- It will indicate places where the shell can save a PID ($!), exit
--- code ($?), or stdout/stderr
--- data Token = Command
---            | ExitCode
---            | Env
---            deriving (Eq, Ord, Show)
 
 -- | Define a pipeline.
 --
