@@ -2,6 +2,8 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Main ( main ) where
 
+import qualified Data.ByteString.Lazy as BS
+
 import Shell
 import Shell.Bash
 
@@ -14,4 +16,4 @@ main = do
     h1 <- background $ command "md5sum" ["/dev/mem"]
     wait h1
     return ()
-  putStrLn script
+  BS.putStr script

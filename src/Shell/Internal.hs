@@ -11,7 +11,7 @@ module Shell.Internal (
   unsafeEnvRef,
   capture,
   -- Commands
-  Command,
+  Command(..),
   command,
   (|||),
   (#),
@@ -21,6 +21,10 @@ module Shell.Internal (
   (@>),
   subshell,
   -- * Internal
+  BWord(..),
+  BSpan(..),
+  StreamSpec(..),
+  CommandSpec(..),
   Result(..),
   Async(..),
   ShellState(..),
