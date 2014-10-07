@@ -94,7 +94,9 @@ newtype BWord = BWord { unWord :: [BSpan] }
 data BSpan = BString String
              -- ^ A plain string
            | BVariable String
-             -- ^ A variable reference
+             -- ^ A checked variable reference
+           | BUnsafeVariable String
+             -- ^ An unchecked variable reference
            | BCommand (Shell Command)
              -- ^ Capture the output of a subshell
            deriving (Eq, Ord, Show)
@@ -109,8 +111,8 @@ instance Monoid BWord where
 -- | Create a reference to an environment variable.  The script
 -- generator will check to ensure that the variable MUST be defined.
 -- If the variable might not be defined, script compilation will fail.
-env :: String -> BSpan
-env = undefined
+env :: String -> BWord
+env s = BWord [BVariable s]
 
 -- | Like 'env', but there is no static check to ensure the variable
 -- is defined.  Use this if you are really sure, or if the environment
@@ -120,7 +122,7 @@ env = undefined
 -- ...) after your @source@ or similar call to ensure that a value
 -- will be set.
 unsafeEnv :: String -> BWord
-unsafeEnv s = BWord [BVariable s]
+unsafeEnv s = BWord [BUnsafeVariable s]
 
 -- | Run the given command in a subshell, capturing its output as a string.
 --
