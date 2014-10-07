@@ -1,8 +1,4 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveFunctor #-}
 module Shell.Internal (
   command,
   run,
@@ -20,46 +16,45 @@ module Shell.Internal (
   (@>),
   subshell,
   -- * Internal
-  SomeShell(..),
   ShellState(..),
-  Shell(..),
-  ShellM(..),
-  emptyState
+  ShellF(..),
+  Shell,
+  ShellM
   ) where
 
 import Control.Applicative
+import qualified Control.Concurrent.Supply as U
+import qualified Control.Monad.Free as FR
 import qualified Control.Monad.State.Strict as MS
 import Data.Map ( Map )
 import qualified Data.Map as M
 import Data.Monoid
-import Data.Sequence ( Seq )
-import qualified Data.Sequence as Seq
-import qualified Data.Set as S
 import Data.String
 
 data ShellState =
-  ShellState { sCommands :: !(Seq SomeShell)
-               -- ^ The list of commands to run.  The index of the
-               -- command in 'sCommands' is its unique identifier.  We
-               -- need this because a command could be run more than
-               -- once, but we might want to refer to its PID/exit
-               -- code separately in the two runs:
-               --
-               -- > let cmd = command "Foo" []
-               -- > run cmd
-               -- > run cmd
-               --
-               -- They will compare Eq, so we need a unique identifier
-               -- (position) to distinguish them.
+  ShellState { sIdSrc :: !U.Supply
              }
-  deriving (Eq, Ord, Show)
 
-emptyState :: ShellState
-emptyState = ShellState { sCommands = Seq.empty
-                        }
+type ShellM = MS.StateT ShellState (FR.Free ShellF)
+type Shell = FR.Free ShellF ()
 
-newtype ShellM a = ShellM (MS.State ShellState a)
-                 deriving (Applicative, Functor, Monad, MS.MonadState ShellState)
+takeId :: ShellM Int
+takeId = do
+  s <- MS.gets sIdSrc
+  let (nid, s') = U.freshId s
+  MS.put $ ShellState s'
+  return nid
+
+evalBody :: ShellM a -> ShellM (FR.Free ShellF a)
+evalBody body = do
+  s <- MS.gets sIdSrc
+  let (local, sub) = U.splitSupply s
+      body' = MS.evalStateT body (ShellState sub)
+  MS.put (ShellState local)
+  return body'
+
+-- newtype ShellM a = ShellM (MS.State ShellState a)
+--                  deriving (Applicative, Functor, Monad, MS.MonadState ShellState)
 
 -- Ways to reference input streams:
 --
@@ -100,7 +95,7 @@ data BSpan = BString String
              -- ^ A checked variable reference
            | BUnsafeVariable String
              -- ^ An unchecked variable reference
-           | BCommand (Shell Command)
+           | BCommand Command
              -- ^ Capture the output of a subshell
            deriving (Eq, Ord, Show)
 
@@ -133,71 +128,58 @@ unsafeEnvRef s = BWord [BUnsafeVariable s]
 -- you require that, explicitly run the command with 'subshell' and
 -- manually capture its output.  It is not necessary to use 'subshell'
 -- and 'capture' together.
-capture :: Shell Command -> BWord
+capture :: Command -> BWord
 capture c = BWord [BCommand c]
 
 data CommandSpec =
   CommandSpec { commandName :: BWord
               , commandArguments :: [BWord]
               }
+  deriving (Eq, Ord, Show)
 
-data Shell (a :: Token) where
-  RunCommand :: CommandSpec -> StreamSpec -> Shell Command
-  -- ^ A simple command
-  And :: SomeShell -> Shell Command -> Shell Command
-  Or :: SomeShell -> Shell Command -> Shell Command
-  Pipe :: Shell Command -> Shell Command -> Shell Command
-  Sequence :: SomeShell -> Shell Command -> Shell Command
-  SubShell :: Shell Command -> StreamSpec -> Shell Command
-  -- ^ Run a list of commands in a subshell.  The exitcode is
-  -- available, as is stdout/stderr.  Note, updates to the environment
-  -- of subshells do not propagate to parents.
-  If :: [(Condition, Block)] -> Maybe Block -> StreamSpec -> Shell Command
-  -- ^ An if statement.  If statements can be redirected, so they need
-  -- a stream spec
-  While :: Condition -> Block -> StreamSpec -> Shell Command
-  Until :: Condition -> Block -> StreamSpec -> Shell Command
-  For :: String -> Exp -> Block -> StreamSpec -> Shell Command
-  -- ^ For introduces a variable (the string name) based on the values
-  -- in the given expression.
-  -- ^ Run a command
-  Wait :: Async -> Shell ExitCode
-  -- ^ Wait for an asynchronous process; returns an exit code
-  GetExitCode :: Result -> Shell ExitCode
-  UnsetEnv :: String -> Shell Env
-  SetEnv :: String -> BWord -> Shell Env
-  -- ^ What do we do here?  We could set to a BWord or reference a subshell
+data ExitCode = ExitCode
+data Env = Env
 
+-- | Command specifications.
+--
+-- Any modifications to a command affect the rightmost stream
+-- specifier.  Note that subshells have their own stream specifier,
+-- independent of the command they execute.
+data Command = Command CommandSpec StreamSpec
+             | And Command Command
+             | Or Command Command
+             | Pipe Command Command
+             | Sequence Command Command
+             | SubShell Command StreamSpec
+             deriving (Eq, Ord, Show)
 
-modifyStreamSpec :: Shell Command -> (StreamSpec -> StreamSpec) -> Shell Command
+data ShellF next = RunSync Command next
+                 | RunAsync Command next
+                 | While Condition Shell next
+                 | Until Condition Shell next
+                 | If [(Condition, Shell)] (Maybe Shell) next
+                 | SubBlock Shell next
+                   -- ^ For block-level subshells
+                 | Wait Async next
+                 | GetExitCode Result next
+                 | UnsetEnv String next
+                 | SetEnv String BWord next
+                 | Done
+                 deriving (Eq, Show, Functor)
+
+modifyStreamSpec :: Command -> (StreamSpec -> StreamSpec) -> Command
 modifyStreamSpec c f =
   case c of
     SubShell cmds spec -> SubShell cmds (f spec)
-    RunCommand cmd spec -> RunCommand cmd (f spec)
-    If cases melse spec -> If cases melse (f spec)
-    While cond body spec -> While cond body (f spec)
-    Until cond body spec -> Until cond body (f spec)
-    For var ex body spec -> For var ex body (f spec)
+    Command cmd spec -> Command cmd (f spec)
     And lhs rhs -> And lhs (modifyStreamSpec rhs f)
     Or lhs rhs -> Or lhs (modifyStreamSpec rhs f)
     Pipe lhs rhs -> Pipe lhs (modifyStreamSpec rhs f)
     Sequence lhs rhs -> Sequence lhs (modifyStreamSpec rhs f)
 
-type Block = [SomeShell]
-
 data Exp = Exp
 data Condition = Condition
-
-instance Show (Shell a)
-instance Eq (Shell a)
-instance Ord (Shell a)
-
-data SomeShell where
-  SomeShell :: Shell a -> SomeShell
-
-instance Eq SomeShell
-instance Ord SomeShell
-instance Show SomeShell
+               deriving (Eq, Ord, Show)
 
 -- | The result of a synchronous command or a wait.  From these, we
 -- can extract an exit code and possibly inspect stdout or stderr.
@@ -209,21 +191,24 @@ data Result = Result Int
 data Async = Async Int
            deriving (Eq, Ord, Show)
 
-addCommand :: Shell a -> ShellM Int
-addCommand c = do
-  cid <- Seq.length <$> MS.gets sCommands
-  MS.modify $ \s -> s { sCommands = sCommands s Seq.|> SomeShell c  }
-  return cid
 
-background :: Shell Command -> ShellM Async
+background :: Command -> ShellM Async
 background c = do
-  cid <- addCommand c
-  return $ Async cid
+  res <- Async <$> takeId
+  FR.liftF (RunAsync c res)
+  return res
 
-run :: Shell Command -> ShellM Result
+run :: Command -> ShellM Result
 run c = do
-  cid <- addCommand c
-  return $ Result cid
+  res <- Result <$> takeId
+  FR.liftF (RunSync c res)
+  return res
+
+while :: Condition -> ShellM () -> ShellM ()
+while c body = do
+  body' <- evalBody body
+  FR.liftF (While c body' ())
+
 
 -- | Modify the environment
 --
@@ -233,11 +218,11 @@ run c = do
 --
 -- Bash can report undefined variable uses (and we generate bash to
 -- enable those warnings), but static information can be nice.
-env :: Shell Env -> ShellM ()
-env e = do
-  _ <- addCommand e
-  return ()
-
+-- env :: Shell Env -> ShellM ()
+-- env e = do
+--   _ <- addCommand e
+--   return ()
+env=undefined
 
 -- FIXME: To make this work, we need two different notions.  The
 -- sequence of allocated uniques and the recorded AST.  The recorded
@@ -245,7 +230,6 @@ env e = do
 -- constituent elements instead of having them flattened into a
 -- sequence).  To do this, processing the body of a nested statement
 -- needs to create a new context to record the children.
-while :: Condition -> ShellM Block -> ShellM
 
 -- | Wait on an asynchronous/backgrounded task.
 --
@@ -255,11 +239,12 @@ while :: Condition -> ShellM Block -> ShellM
 -- this to access stdout/stderr.  We can only get an exit code.
 wait :: Async -> ShellM Result
 wait a = do
-  rid <- addCommand (Wait a)
-  return $ Result rid
+  res <- Result <$> takeId
+  FR.liftF (Wait a res)
+  return res
 
-command :: BWord -> [BWord] -> Shell Command
-command cmd args = RunCommand cspec mempty
+command :: BWord -> [BWord] -> Command
+command cmd args = Command cspec mempty
   where
     cspec = CommandSpec { commandName = cmd
                         , commandArguments = args
@@ -269,43 +254,43 @@ command cmd args = RunCommand cspec mempty
 --
 -- It will indicate places where the shell can save a PID ($!), exit
 -- code ($?), or stdout/stderr
-data Token = Command
-           | ExitCode
-           | Env
-           deriving (Eq, Ord, Show)
+-- data Token = Command
+--            | ExitCode
+--            | Env
+--            deriving (Eq, Ord, Show)
 
 -- | Define a pipeline.
 --
 -- The LHS command is implicitly made asynchronous.  The RHS command
 -- "owns" the command resulting from the ||| operator is referenced by
 -- the RHS command.
-(|||) :: Shell Command -> Shell Command -> Shell Command
-src ||| sink = Pipe src $ modifyStreamSpec sink $ \s ->
-  s { ssSpecs = M.insert 1 StreamPipe (ssSpecs s) }
+-- (|||) :: Shell a -> Shell a -> Shell Command
+src ||| sink = undefined -- Pipe src $ modifyStreamSpec sink $ \s ->
+  -- s { ssSpecs = M.insert 1 StreamPipe (ssSpecs s) }
 
 -- | Sequence commands
-(#) :: Shell a -> Shell Command -> Shell Command
-c1 # c2 = Sequence (SomeShell c1) c2
+-- (#) :: Shell a -> Shell a -> Shell Command
+c1 # c2 = undefined -- Sequence (SomeShell c1) c2
 
 -- | Redirect stdout, overwriting the target file
-(|>) :: Shell Command -> FilePath -> Shell Command
+(|>) :: Command -> FilePath -> Command
 c |> fp =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 1 (StreamFile fp) (ssSpecs s) }
 
 -- | Redirect stout, appending to the target file
-(|>>) :: Shell Command -> FilePath -> Shell Command
+(|>>) :: Command -> FilePath -> Command
 c |>> fp =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 1 (StreamAppend fp) (ssSpecs s) }
 
-(<|) :: Shell Command -> FilePath -> Shell Command
+(<|) :: Command -> FilePath -> Command
 c <| fp =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 0 (StreamFile fp) (ssSpecs s) }
 
 -- | Redirect the first fd to the second fd
-(@>) :: Shell Command -> (Int, Int) -> Shell Command
+(@>) :: Command -> (Int, Int) -> Command
 c @> (src, dst) =
   modifyStreamSpec c $ \s -> s { ssSpecs = M.insert src (StreamFD dst) (ssSpecs s) }
 
 -- | Wrap the given command in a subshell
-subshell :: Shell Command -> Shell Command
+subshell :: Command -> Command
 subshell c = SubShell c mempty
