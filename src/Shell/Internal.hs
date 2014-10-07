@@ -168,6 +168,7 @@ data Shell (a :: Token) where
   SetEnv :: String -> BWord -> Shell Env
   -- ^ What do we do here?  We could set to a BWord or reference a subshell
 
+
 modifyStreamSpec :: Shell Command -> (StreamSpec -> StreamSpec) -> Shell Command
 modifyStreamSpec c f =
   case c of
@@ -236,6 +237,15 @@ env :: Shell Env -> ShellM ()
 env e = do
   _ <- addCommand e
   return ()
+
+
+-- FIXME: To make this work, we need two different notions.  The
+-- sequence of allocated uniques and the recorded AST.  The recorded
+-- AST has the actual structure (so a while statement "contains" its
+-- constituent elements instead of having them flattened into a
+-- sequence).  To do this, processing the body of a nested statement
+-- needs to create a new context to record the children.
+while :: Condition -> ShellM Block -> ShellM
 
 -- | Wait on an asynchronous/backgrounded task.
 --
