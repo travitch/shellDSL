@@ -43,6 +43,7 @@ formatAction fmt (AnyShell shell) =
     RunSync _ cmd _ -> fmtCommand fmt fmt cmd
     RunAsync _ cmd _ -> printf "%s &" (fmtCommand fmt fmt cmd)
     Wait _ (Async a) _ -> printf "wait # on %d" a
+--    SubBlock _ shell' _ -> printf "(\n%s\n)" (formatAction fmt (AnyShell shell'))
 
 
 formatStream :: Formatter -> StreamSpec -> String
@@ -56,6 +57,9 @@ formatCommand fmt cmd =
       | otherwise -> printf "%s %s" (fmtCommandSpec fmt fmt cspec) redirStr
       where
         redirStr = fmtStream fmt fmt redirs
+    And c1 c2 -> printf "%s && %s" (formatCommand fmt c1) (formatCommand fmt c2)
+    Or c1 c2 -> printf "%s || %s" (formatCommand fmt c1) (formatCommand fmt c2)
+    Sequence c1 c2 -> printf "%s ; %s" (formatCommand fmt c1) (formatCommand fmt c2)
 
 formatCommandSpec :: Formatter -> CommandSpec -> String
 formatCommandSpec fmt spec = L.intercalate " " $ map (fmtWord fmt fmt) (commandName spec : commandArguments spec)

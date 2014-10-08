@@ -13,7 +13,9 @@ module Shell.Internal (
   -- Commands
   Command(..),
   command,
-  (|||),
+  (*|*),
+  (*||*),
+  (*&&*),
   (#),
   (|>),
   (|>>),
@@ -152,6 +154,8 @@ data Env = Env
 -- Any modifications to a command affect the rightmost stream
 -- specifier.  Note that subshells have their own stream specifier,
 -- independent of the command they execute.
+--
+-- FIXME: Need to unparse precedence in and/or
 data Command = Command CommandSpec StreamSpec
              | And Command Command
              | Or Command Command
@@ -255,11 +259,17 @@ command cmd args = Command cspec mempty
 -- The LHS command is implicitly made asynchronous.  The RHS command
 -- "owns" the command resulting from the ||| operator is referenced by
 -- the RHS command.
-(|||) :: Command -> Command -> Command
-src ||| sink =
+(*|*) :: Command -> Command -> Command
+src *|* sink =
   Pipe (modifyStreamSpec src (pipeStream 1)) (modifyStreamSpec sink (pipeStream 0))
   where
     pipeStream i s = s { ssSpecs = M.insert i StreamPipe (ssSpecs s) }
+
+(*||*) :: Command -> Command -> Command
+(*||*) = Or
+
+(*&&*) :: Command -> Command -> Command
+(*&&*) = And
 
 -- | Sequence commands
 (#) :: Command -> Command -> Command

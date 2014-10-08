@@ -13,7 +13,9 @@ module Shell (
   -- * Commands
   Command,
   command,
-  (|||),
+  (*|*),
+  (*||*),
+  (*&&*),
   (#),
   (|>),
   (|>>),
