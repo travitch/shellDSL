@@ -40,14 +40,21 @@ formatAction fmt shell =
     RunSync _ cmd -> fmtCommand fmt fmt cmd
     RunAsync _ cmd -> fmtCommand fmt fmt cmd <+> PP.string "&"
     Wait _ (Async a) -> PP.string $ printf "wait # on %d" a
+    SetEnv _ str val -> PP.string str <> PP.char '=' <> fmtWord fmt fmt val
+    UnsetEnv _ str -> PP.string "unset" <+> PP.string str
+    ExportEnv _ str -> PP.string "export" <+> PP.string str
     While _ cond body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
       in PP.string "while FIXME/COND; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
     Until _ cond body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
       in PP.string "until FIXME/cond; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
---    SubBlock _ shell' _ -> printf "(\n%s\n)" (formatAction fmt (AnyShell shell'))
-
+    SubBlock _ Nothing body ->
+      let bdoc = PP.stack $ map (formatAction fmt) body
+      in PP.string "(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
+    SubBlock _ (Just var) body ->
+      let bdoc = PP.stack $ map (formatAction fmt) body
+      in PP.string var <> PP.string "=$(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
 
 formatStream :: Formatter -> StreamSpec -> Doc
 formatStream _ _ = mempty

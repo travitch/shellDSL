@@ -6,8 +6,11 @@ module Shell.Internal (
   wait,
   setEnv,
   unsetEnv,
-  while,
-  until,
+  exportEnv,
+  whileM,
+  untilM,
+  subshellM,
+  subshellCaptureM,
   -- * Strings and names
   envRef,
   unsafeEnvRef,
@@ -37,8 +40,6 @@ module Shell.Internal (
   flattenShell,
   ShellM
   ) where
-
-import Prelude hiding ( until )
 
 import qualified Control.Concurrent.Supply as U
 import qualified Control.Monad.Free as FR
@@ -175,12 +176,13 @@ data ShellF next = RunSyncF UID Command next
                  | WhileF UID Condition FreeShell next
                  | UntilF UID Condition FreeShell next
                  | IfF UID [(Condition, FreeShell)] (Maybe FreeShell) next
-                 | SubBlockF UID FreeShell next
-                   -- ^ For block-level subshells
+                 | SubBlockF UID (Maybe String) FreeShell next
+                   -- ^ For block-level subshells, with optional output capture
                  | WaitF UID Async next
                  | GetExitCodeF UID Result next
                  | UnsetEnvF UID String next
                  | SetEnvF UID String BWord next
+                 | ExportEnvF UID String next
                  | Done
                  deriving (Eq, Show, Functor)
 
@@ -189,11 +191,13 @@ data Shell = RunSync UID Command
            | While UID Condition [Shell]
            | Until UID Condition [Shell]
            | If UID [(Condition, [Shell])] (Maybe [Shell])
-           | SubBlock UID [Shell]
+           | SubBlock UID (Maybe String) [Shell]
+             -- ^ Subshell with an optional capture of the output
            | Wait UID Async
            | GetExitCode UID Result
            | UnsetEnv UID String
            | SetEnv UID String BWord
+           | ExportEnv UID String
 
 modifyStreamSpec :: Command -> (StreamSpec -> StreamSpec) -> Command
 modifyStreamSpec c f =
@@ -232,14 +236,14 @@ run c = do
   _ <- FR.liftF (RunSyncF uid c res)
   return res
 
-while :: Condition -> ShellM () -> ShellM ()
-while c body = do
+whileM :: Condition -> ShellM () -> ShellM ()
+whileM c body = do
   uid <- takeId
   body' <- evalBody body
   FR.liftF (WhileF uid c body' ())
 
-until :: Condition -> ShellM () -> ShellM ()
-until c body = do
+untilM :: Condition -> ShellM () -> ShellM ()
+untilM c body = do
   uid <- takeId
   body' <- evalBody body
   FR.liftF (UntilF uid c body' ())
@@ -248,6 +252,24 @@ setEnv :: String -> BWord -> ShellM ()
 setEnv name val = do
   uid <- takeId
   FR.liftF (SetEnvF uid name val ())
+
+exportEnv :: String -> ShellM ()
+exportEnv name = do
+  uid <- takeId
+  FR.liftF (ExportEnvF uid name ())
+
+-- | Run the given block in a subshell
+subshellM :: ShellM () -> ShellM ()
+subshellM body = do
+  uid <- takeId
+  body' <- evalBody body
+  FR.liftF (SubBlockF uid Nothing body' ())
+
+subshellCaptureM :: String -> ShellM () -> ShellM ()
+subshellCaptureM name body = do
+  uid <- takeId
+  body' <- evalBody body
+  FR.liftF (SubBlockF uid (Just name) body' ())
 
 unsetEnv :: String -> ShellM ()
 unsetEnv name = do
@@ -334,6 +356,7 @@ flattenM = FR.iterM $ \f ->
     GetExitCodeF uid r next -> appendShell (GetExitCode uid r) >> next
     UnsetEnvF uid str next -> appendShell (UnsetEnv uid str) >> next
     SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
+    ExportEnvF uid str next -> appendShell (ExportEnv uid str) >> next
     WhileF uid cond body next -> do
       body' <- nestedBlock body
       appendShell (While uid cond body')
@@ -342,9 +365,9 @@ flattenM = FR.iterM $ \f ->
       body' <- nestedBlock body
       appendShell (Until uid cond body')
       next
-    SubBlockF uid body next -> do
+    SubBlockF uid mcap body next -> do
       body' <- nestedBlock body
-      appendShell (SubBlock uid body')
+      appendShell (SubBlock uid mcap body')
       next
     Done -> return ()
 

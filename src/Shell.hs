@@ -5,9 +5,12 @@ module Shell (
   wait,
   setEnv,
   unsetEnv,
+  exportEnv,
   -- * Control flow
-  while,
-  until,
+  whileM,
+  untilM,
+  subshellM,
+  subshellCaptureM,
   -- * Referencing things
   envRef,
   unsafeEnvRef,
