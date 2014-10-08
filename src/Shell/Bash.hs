@@ -1,8 +1,6 @@
 module Shell.Bash ( runBash ) where
 
 import qualified Control.Monad.State.Strict as MS
-import qualified Data.ByteString.Lazy as BS
-import qualified Data.ByteString.Lazy.Builder as BS
 import Data.Monoid
 import Text.Printf ( printf )
 import qualified Text.PrettyPrint.Mainland as PP

@@ -2,8 +2,6 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Main ( main ) where
 
-import qualified Data.ByteString.Lazy as BS
-
 import Shell
 import Shell.Bash
 import Shell.Internal
