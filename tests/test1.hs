@@ -2,6 +2,8 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Main ( main ) where
 
+import Data.Monoid
+
 import Shell
 import Shell.Bash
 import Shell.Internal
@@ -24,4 +26,6 @@ main = do
     exportEnv "BAR"
     setEnv "FOO" "5"
     unsetEnv "BAZ"
+    run $ command "echo" ["BAR=" <> envRef "BAR"]
+    return ()
   putStrLn script
