@@ -71,6 +71,10 @@ renderScriptM fmt = FR.iterM $ \f ->
       next
     Done -> return ()
 
+-- FIXME: Write a withIndentation operator to add to the current
+-- indentation and then subtract when the scope is exited.  This way,
+-- formatters won't need to know about it
+
 writeLine :: String -> Render ()
 writeLine line =
   MS.modify $ \s -> s { sBuilder = sBuilder s <> BS.stringUtf8 line <> BS.charUtf8 '\n' }
