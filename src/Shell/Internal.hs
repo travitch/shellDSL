@@ -7,6 +7,7 @@ module Shell.Internal (
   setEnv,
   unsetEnv,
   while,
+  until,
   -- * Strings and names
   envRef,
   unsafeEnvRef,
@@ -36,6 +37,8 @@ module Shell.Internal (
   flattenShell,
   ShellM
   ) where
+
+import Prelude hiding ( until )
 
 import Control.Applicative
 import qualified Control.Concurrent.Supply as U
@@ -240,6 +243,12 @@ while c body = do
   body' <- evalBody body
   FR.liftF (WhileF uid c body' ())
 
+until :: Condition -> ShellM () -> ShellM ()
+until c body = do
+  uid <- takeId
+  body' <- evalBody body
+  FR.liftF (UntilF uid c body' ())
+
 setEnv :: String -> BWord -> ShellM ()
 setEnv name val = do
   uid <- takeId
@@ -333,6 +342,10 @@ flattenM = FR.iterM $ \f ->
     WhileF uid cond body next -> do
       body' <- nestedBlock body
       appendShell (While uid cond body')
+      next
+    UntilF uid cond body next -> do
+      body' <- nestedBlock body
+      appendShell (Until uid cond body')
       next
     Done -> return ()
 

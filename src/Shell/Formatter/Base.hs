@@ -43,6 +43,9 @@ formatAction fmt shell =
     While _ cond body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
       in PP.string "while FIXME/COND; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
+    Until _ cond body ->
+      let bdoc = PP.stack $ map (formatAction fmt) body
+      in PP.string "until FIXME/cond; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
 --    SubBlock _ shell' _ -> printf "(\n%s\n)" (formatAction fmt (AnyShell shell'))
 
 

@@ -7,6 +7,7 @@ module Shell (
   unsetEnv,
   -- * Control flow
   while,
+  until,
   -- * Referencing things
   envRef,
   unsafeEnvRef,
@@ -24,5 +25,7 @@ module Shell (
   (@>),
   subshell
   ) where
+
+import Prelude hiding ( until )
 
 import Shell.Internal
