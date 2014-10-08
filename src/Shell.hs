@@ -26,7 +26,9 @@ module Shell (
   (|>>),
   (<|),
   (@>),
-  subshell
+  subshell,
+  -- * Tests
+  testFileExists
   ) where
 
 import Prelude hiding ( until )

@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 module Shell.Internal (
   -- * Running things
@@ -29,8 +30,9 @@ module Shell.Internal (
   (<|),
   (@>),
   subshell,
+  -- * Tests
+  testFileExists,
   -- * Internal
-  Condition(..),
   BWord(..),
   BSpan(..),
   StreamSpec(..),
@@ -40,10 +42,12 @@ module Shell.Internal (
   Async(..),
   ShellState(..),
   Shell(..),
+  TestSpec(..),
   flattenShell,
   ShellM
   ) where
 
+import Control.Applicative
 import qualified Control.Concurrent.Supply as U
 import qualified Control.Monad.Free as FR
 import qualified Control.Monad.State.Strict as MS
@@ -52,6 +56,7 @@ import Data.Monoid
 import Data.Sequence ( Seq )
 import qualified Data.Sequence as Seq
 import Data.String
+import qualified Data.Traversable as T
 
 data ShellState =
   ShellState { sIdSrc :: !U.Supply
@@ -169,15 +174,45 @@ data Command = Command CommandSpec StreamSpec
              | Pipe Command Command
              | Sequence Command Command
              | SubShell Command StreamSpec
+             | Test TestSpec
              deriving (Eq, Ord, Show)
+
+data TestSpec = TSFileExists BWord
+              | TSFileIsRegular BWord
+              | TSFileIsDirectory BWord
+              | TSFileIsSymlink BWord
+              | TSPipeExists BWord
+              | TSFileIsReadableY BWord
+              | TSFileNotEmpty BWord
+              | TSFDOpenOnTerminal BWord
+              | TSFileWritableY BWord
+              | TSFileExecutableY BWord
+              | TSFileEffectivelyOwnedY BWord
+              | TSFileEffectivelyOwnedG BWord
+              | TSFileNewer BWord BWord
+              | TSFileOlder BWord BWord
+              | TSStringEmpty BWord
+              | TSStringNotEmpty BWord
+              | TSStringIdentical BWord BWord
+              | TSStringNotIdentical BWord BWord
+              | TSStringLT BWord BWord
+              | TSStringGT BWord BWord
+              | TSNegate TestSpec
+              | TSIntEq BWord BWord
+              | TSIntNeq BWord BWord
+              | TSIntLT BWord BWord
+              | TSIntGT BWord BWord
+              | TSIntLE BWord BWord
+              | TSIntGE BWord BWord
+              deriving (Eq, Ord, Show)
 
 type UID = Int
 
 data ShellF next = RunSyncF UID Command next
                  | RunAsyncF UID Command next
-                 | WhileF UID Condition FreeShell next
-                 | UntilF UID Condition FreeShell next
-                 | IfF UID [(Condition, FreeShell)] (Maybe FreeShell) next
+                 | WhileF UID Command FreeShell next
+                 | UntilF UID Command FreeShell next
+                 | IfF UID [(Command, FreeShell)] (Maybe FreeShell) next
                  | SubBlockF UID (Maybe String) FreeShell next
                    -- ^ For block-level subshells, with optional output capture
                  | WaitF UID Async next
@@ -190,9 +225,9 @@ data ShellF next = RunSyncF UID Command next
 
 data Shell = RunSync UID Command
            | RunAsync UID Command
-           | While UID Condition [Shell]
-           | Until UID Condition [Shell]
-           | If UID [(Condition, [Shell])] (Maybe [Shell])
+           | While UID Command [Shell]
+           | Until UID Command [Shell]
+           | If UID [(Command, [Shell])] (Maybe [Shell])
            | SubBlock UID (Maybe String) [Shell]
              -- ^ Subshell with an optional capture of the output
            | Wait UID Async
@@ -210,9 +245,7 @@ modifyStreamSpec c f =
     Or lhs rhs -> Or lhs (modifyStreamSpec rhs f)
     Pipe lhs rhs -> Pipe lhs (modifyStreamSpec rhs f)
     Sequence lhs rhs -> Sequence lhs (modifyStreamSpec rhs f)
-
-data Condition = Condition
-               deriving (Eq, Ord, Show)
+    Test _ -> c
 
 -- | The result of a synchronous command or a wait.  From these, we
 -- can extract an exit code and possibly inspect stdout or stderr.
@@ -238,13 +271,13 @@ run c = do
   _ <- FR.liftF (RunSyncF uid c res)
   return res
 
-whileM :: Condition -> ShellM () -> ShellM ()
+whileM :: Command -> ShellM () -> ShellM ()
 whileM c body = do
   uid <- takeId
   body' <- evalBody body
   FR.liftF (WhileF uid c body' ())
 
-untilM :: Condition -> ShellM () -> ShellM ()
+untilM :: Command -> ShellM () -> ShellM ()
 untilM c body = do
   uid <- takeId
   body' <- evalBody body
@@ -297,6 +330,9 @@ command cmd args = Command cspec mempty
     cspec = CommandSpec { commandName = cmd
                         , commandArguments = args
                         }
+
+testFileExists :: BWord -> Command
+testFileExists = Test . TSFileExists
 
 -- | Define a pipeline.
 --
@@ -359,6 +395,11 @@ flattenM = FR.iterM $ \f ->
     UnsetEnvF uid str next -> appendShell (UnsetEnv uid str) >> next
     SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
     ExportEnvF uid str next -> appendShell (ExportEnv uid str) >> next
+    IfF uid tests melse next -> do
+      tests' <- T.mapM (\(c, b) -> (c,) <$> nestedBlock b) tests
+      melse' <- T.mapM nestedBlock melse
+      appendShell (If uid tests' melse')
+      next
     WhileF uid cond body next -> do
       body' <- nestedBlock body
       appendShell (While uid cond body')

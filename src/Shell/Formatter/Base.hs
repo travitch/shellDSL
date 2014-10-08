@@ -23,6 +23,7 @@ data Formatter =
               -- ^ Format a word-like thing (string with interpolation)
             , fmtStream :: Formatter -> StreamSpec -> Doc
               -- ^ Format IO redirection specifiers
+            , fmtTest :: Formatter -> TestSpec -> Doc
             , fmtIndentation :: Int
             }
 
@@ -32,6 +33,7 @@ defaultFormatter = Formatter { fmtWord = formatWord
                              , fmtCommandSpec = formatCommandSpec
                              , fmtAction = formatAction
                              , fmtStream = formatStream
+                             , fmtTest = formatTest
                              , fmtIndentation = 2
                              }
 
@@ -47,16 +49,21 @@ formatAction fmt shell =
     ExportEnv _ str -> PP.string "export" <+> PP.string str
     While _ cond body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
-      in PP.string "while FIXME/COND; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
+      in PP.string "while" <+> fmtCommand fmt fmt cond <> PP.string "; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
     Until _ cond body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
-      in PP.string "until FIXME/cond; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
+      in PP.string "until" <+> fmtCommand fmt fmt cond <> PP.string "; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
     SubBlock _ Nothing body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
       in PP.string "(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
     SubBlock _ (Just var) body ->
       let bdoc = PP.stack $ map (formatAction fmt) body
       in PP.string var <> PP.string "=$(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
+
+formatTest :: Formatter -> TestSpec -> Doc
+formatTest fmt ts =
+  case ts of
+    TSFileExists w -> PP.string "-e" <+> fmtWord fmt fmt w
 
 formatStream :: Formatter -> StreamSpec -> Doc
 formatStream fmt (StreamSpec specs) =
@@ -84,6 +91,7 @@ formatCommand fmt cmd =
     SubShell c1 redirs
       | hasNoRedirections redirs -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')'
       | otherwise -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')' <+> fmtStream fmt fmt redirs
+    Test ts -> PP.string "[" <+> fmtTest fmt fmt ts <+> PP.string "]"
 
 hasNoRedirections :: StreamSpec -> Bool
 hasNoRedirections (StreamSpec s) = Seq.null s

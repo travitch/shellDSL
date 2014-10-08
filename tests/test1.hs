@@ -15,7 +15,7 @@ main = do
     run $ command "ls" [] |>> "/tmp/lsout"
     run $ command "wc" ["-l", "/etc/fstab"] @> (2, 1) |> "/tmp/fscount"
     h1 <- background $ command "md5sum" ["/dev/mem"]
-    whileM Condition $ do
+    whileM (testFileExists "/etc/mtab") $ do
       run $ command "echo" ["loop"]
       return ()
     wait h1
