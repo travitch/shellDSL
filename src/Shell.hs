@@ -1,5 +1,4 @@
 module Shell (
-  Shell,
   -- * Running things
   run,
   background,

@@ -30,8 +30,8 @@ module Shell.Internal (
   Result(..),
   Async(..),
   ShellState(..),
-  ShellF(..),
-  Shell,
+  Shell(..),
+  flattenShell,
   ShellM
   ) where
 
@@ -39,9 +39,12 @@ import Control.Applicative
 import qualified Control.Concurrent.Supply as U
 import qualified Control.Monad.Free as FR
 import qualified Control.Monad.State.Strict as MS
+import qualified Data.Foldable as F
 import Data.Map ( Map )
 import qualified Data.Map as M
 import Data.Monoid
+import Data.Sequence ( Seq )
+import qualified Data.Sequence as Seq
 import Data.String
 
 data ShellState =
@@ -49,7 +52,7 @@ data ShellState =
              }
 
 type ShellM = MS.StateT ShellState (FR.Free ShellF)
-type Shell = FR.Free ShellF ()
+type FreeShell = FR.Free ShellF ()
 
 takeId :: ShellM Int
 takeId = do
@@ -166,19 +169,30 @@ data Command = Command CommandSpec StreamSpec
 
 type UID = Int
 
-data ShellF next = RunSync UID Command next
-                 | RunAsync UID Command next
-                 | While UID Condition Shell next
-                 | Until UID Condition Shell next
-                 | If UID [(Condition, Shell)] (Maybe Shell) next
-                 | SubBlock UID Shell next
+data ShellF next = RunSyncF UID Command next
+                 | RunAsyncF UID Command next
+                 | WhileF UID Condition FreeShell next
+                 | UntilF UID Condition FreeShell next
+                 | IfF UID [(Condition, FreeShell)] (Maybe FreeShell) next
+                 | SubBlockF UID FreeShell next
                    -- ^ For block-level subshells
-                 | Wait UID Async next
-                 | GetExitCode UID Result next
-                 | UnsetEnv UID String next
-                 | SetEnv UID String BWord next
+                 | WaitF UID Async next
+                 | GetExitCodeF UID Result next
+                 | UnsetEnvF UID String next
+                 | SetEnvF UID String BWord next
                  | Done
                  deriving (Eq, Show, Functor)
+
+data Shell = RunSync UID Command
+           | RunAsync UID Command
+           | While UID Condition [Shell]
+           | Until UID Condition [Shell]
+           | If UID [(Condition, [Shell])] (Maybe [Shell])
+           | SubBlock UID [Shell]
+           | Wait UID Async
+           | GetExitCode UID Result
+           | UnsetEnv UID String
+           | SetEnv UID String BWord
 
 modifyStreamSpec :: Command -> (StreamSpec -> StreamSpec) -> Command
 modifyStreamSpec c f =
@@ -208,31 +222,31 @@ background :: Command -> ShellM Async
 background c = do
   uid <- takeId
   let res = Async uid
-  FR.liftF (RunAsync uid c res)
+  FR.liftF (RunAsyncF uid c res)
   return res
 
 run :: Command -> ShellM Result
 run c = do
   uid <- takeId
   let res = Result uid
-  FR.liftF (RunSync uid c res)
+  FR.liftF (RunSyncF uid c res)
   return res
 
 while :: Condition -> ShellM () -> ShellM ()
 while c body = do
   uid <- takeId
   body' <- evalBody body
-  FR.liftF (While uid c body' ())
+  FR.liftF (WhileF uid c body' ())
 
 setEnv :: String -> BWord -> ShellM ()
 setEnv name val = do
   uid <- takeId
-  FR.liftF (SetEnv uid name val ())
+  FR.liftF (SetEnvF uid name val ())
 
 unsetEnv :: String -> ShellM ()
 unsetEnv name = do
   uid <- takeId
-  FR.liftF (UnsetEnv uid name ())
+  FR.liftF (UnsetEnvF uid name ())
 
 -- | Wait on an asynchronous/backgrounded task.
 --
@@ -244,7 +258,7 @@ wait :: Async -> ShellM Result
 wait a = do
   uid <- takeId
   let res = Result uid
-  FR.liftF (Wait uid a res)
+  FR.liftF (WaitF uid a res)
   return res
 
 command :: BWord -> [BWord] -> Command
@@ -297,3 +311,31 @@ c @> (src, dst) =
 -- | Wrap the given command in a subshell
 subshell :: Command -> Command
 subshell c = SubShell c mempty
+
+
+data FlatState = FlatState { sShells :: Seq Shell }
+emptyFlatState :: FlatState
+emptyFlatState = FlatState { sShells = Seq.empty }
+
+type Flatten = MS.State FlatState
+
+flattenM :: FreeShell -> Flatten ()
+flattenM = FR.iterM $ \f ->
+  case f of
+    RunSyncF uid cmd next -> appendShell (RunSync uid cmd) >> next
+    RunAsyncF uid cmd next -> appendShell (RunAsync uid cmd) >> next
+    WaitF uid a next -> appendShell (Wait uid a) >> next
+    GetExitCodeF uid r next -> appendShell (GetExitCode uid r) >> next
+    UnsetEnvF uid str next -> appendShell (UnsetEnv uid str) >> next
+    SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
+    Done -> return ()
+
+appendShell :: Shell -> Flatten ()
+appendShell sh = MS.modify $ \s -> s { sShells = sShells s Seq.|> sh }
+
+flattenShell :: ShellM () -> IO [Shell]
+flattenShell st = do
+  s <- U.newSupply
+  let freeShell = MS.evalStateT st (ShellState s)
+      cmds = F.toList $ sShells $ MS.execState (flattenM freeShell) emptyFlatState
+  return cmds
