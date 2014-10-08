@@ -65,8 +65,11 @@ formatStream fmt (StreamSpec specs) =
     f s =
       case s of
         StreamFile 1 dst -> PP.string ">" <> fmtWord fmt fmt dst
+        StreamFile fd dst -> PP.ppr fd <> PP.char '>' <> fmtWord fmt fmt dst
         StreamAppend 1 dst -> PP.string ">>" <> fmtWord fmt fmt dst
+        StreamAppend fd dst -> PP.ppr fd <> PP.string ">>" <> fmtWord fmt fmt dst
         StreamFD src dst -> PP.ppr src <> PP.string ">&" <> PP.ppr dst
+        StreamPipe _ -> mempty
 
 formatCommand :: Formatter -> Command -> Doc
 formatCommand fmt cmd =
@@ -77,6 +80,7 @@ formatCommand fmt cmd =
     And c1 c2 -> formatCommand fmt c1 <+> PP.string "&&" <+> formatCommand fmt c2
     Or c1 c2 -> formatCommand fmt c1 <+> PP.string "||" <+> formatCommand fmt c2
     Sequence c1 c2 -> formatCommand fmt c1 <+> PP.string ";" <+> formatCommand fmt c2
+    Pipe c1 c2 -> formatCommand fmt c1 <+> PP.string "|" <+> formatCommand fmt c2
 
 hasNoRedirections :: StreamSpec -> Bool
 hasNoRedirections (StreamSpec s) = Seq.null s

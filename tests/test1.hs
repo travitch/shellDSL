@@ -26,6 +26,6 @@ main = do
     exportEnv "BAR"
     setEnv "FOO" "5"
     unsetEnv "BAZ"
-    run $ command "echo" ["BAR=" <> envRef "BAR"]
+    run $ command "echo" ["BAR=" <> envRef "BAR"] *|* command "wc -c" []
     return ()
   putStrLn script
