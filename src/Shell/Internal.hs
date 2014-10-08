@@ -40,7 +40,6 @@ module Shell.Internal (
 
 import Prelude hiding ( until )
 
-import Control.Applicative
 import qualified Control.Concurrent.Supply as U
 import qualified Control.Monad.Free as FR
 import qualified Control.Monad.State.Strict as MS
@@ -154,9 +153,6 @@ data CommandSpec =
               }
   deriving (Eq, Ord, Show)
 
-data ExitCode = ExitCode
-data Env = Env
-
 -- | Command specifications.
 --
 -- Any modifications to a command affect the rightmost stream
@@ -209,7 +205,6 @@ modifyStreamSpec c f =
     Pipe lhs rhs -> Pipe lhs (modifyStreamSpec rhs f)
     Sequence lhs rhs -> Sequence lhs (modifyStreamSpec rhs f)
 
-data Exp = Exp
 data Condition = Condition
                deriving (Eq, Ord, Show)
 
@@ -227,14 +222,14 @@ background :: Command -> ShellM Async
 background c = do
   uid <- takeId
   let res = Async uid
-  FR.liftF (RunAsyncF uid c res)
+  _ <- FR.liftF (RunAsyncF uid c res)
   return res
 
 run :: Command -> ShellM Result
 run c = do
   uid <- takeId
   let res = Result uid
-  FR.liftF (RunSyncF uid c res)
+  _ <- FR.liftF (RunSyncF uid c res)
   return res
 
 while :: Condition -> ShellM () -> ShellM ()
@@ -269,7 +264,7 @@ wait :: Async -> ShellM Result
 wait a = do
   uid <- takeId
   let res = Result uid
-  FR.liftF (WaitF uid a res)
+  _ <- FR.liftF (WaitF uid a res)
   return res
 
 command :: BWord -> [BWord] -> Command
@@ -346,6 +341,10 @@ flattenM = FR.iterM $ \f ->
     UntilF uid cond body next -> do
       body' <- nestedBlock body
       appendShell (Until uid cond body')
+      next
+    SubBlockF uid body next -> do
+      body' <- nestedBlock body
+      appendShell (SubBlock uid body')
       next
     Done -> return ()
 
