@@ -26,6 +26,8 @@ main = do
     exportEnv "BAR"
     setEnv "FOO" "5"
     unsetEnv "BAZ"
-    run $ command "echo" ["BAR=" <> envRef "BAR"] *|* command "wc -c" []
+    let shared = command "echo" ["BAR=" <> envRef "BAR"] *|* command "wc -c" []
+    run shared
+    run $ subshell shared |> "/dev/null"
     return ()
   putStrLn script
