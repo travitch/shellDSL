@@ -5,7 +5,7 @@ module Main ( main ) where
 import Data.Monoid
 
 import Shell
-import Shell.Bash
+import Shell.Formatter.Bash
 
 main :: IO ()
 main = do

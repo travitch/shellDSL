@@ -14,9 +14,9 @@ cabal-version:       >=1.10
 
 library
   exposed-modules: Shell,
-                   Shell.Bash,
-                   Shell.Internal,
+                   Shell.Formatter.Bash,
                    Shell.Formatter.Base,
+                   Shell.Internal,
                    Shell.Render
   -- other-modules:
   build-depends:  base == 4.*,

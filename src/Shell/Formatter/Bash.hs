@@ -1,5 +1,8 @@
 -- | Render an abstract shell script as a bash script
-module Shell.Bash ( runBash, bashFormatter ) where
+module Shell.Formatter.Bash (
+  runBash,
+  bashFormatter
+  ) where
 
 import qualified Shell.Formatter.Base as F
 import qualified Shell.Internal as I
