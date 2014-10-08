@@ -63,7 +63,36 @@ formatAction fmt shell =
 formatTest :: Formatter -> TestSpec -> Doc
 formatTest fmt ts =
   case ts of
-    TSFileExists w -> PP.string "-e" <+> fmtWord fmt fmt w
+    TSFileExists w -> prefixTest "-e" w
+    TSFileIsRegular w -> prefixTest "-f" w
+    TSFileIsDirectory w -> prefixTest "-d" w
+    TSFileIsSymlink w -> prefixTest "-h" w
+    TSPipeExists w -> prefixTest "-p" w
+    TSFileIsReadableY w -> prefixTest "-r" w
+    TSFileNotEmpty w -> prefixTest "-s" w
+    TSFDOpenOnTerminal w -> prefixTest "-t" w
+    TSFileWritableY w -> prefixTest "-w" w
+    TSFileExecutableY w -> prefixTest "-x" w
+    TSFileEffectivelyOwnedY w -> prefixTest "-O" w
+    TSFileEffectivelyOwnedG w -> prefixTest "-G" w
+    TSFileNewer w1 w2 -> infixTest w1 "-nt" w2
+    TSFileOlder w1 w2 -> infixTest w1 "-ot" w2
+    TSStringEmpty w -> prefixTest "-z" w
+    TSStringNotEmpty w -> prefixTest "-n" w
+    TSStringIdentical w1 w2 -> infixTest w1 "=" w2
+    TSStringNotIdentical w1 w2 -> infixTest w1 "!=" w2
+    TSStringLT w1 w2 -> infixTest w1 "<" w2
+    TSStringGT w1 w2 -> infixTest w1 ">" w2
+    TSNegate t' -> PP.string "!" <+> formatTest fmt t'
+    TSIntEq w1 w2 -> infixTest w1 "-eq" w2
+    TSIntNeq w1 w2 -> infixTest w1 "-ne" w2
+    TSIntLT w1 w2 -> infixTest w1 "-lt" w2
+    TSIntGT w1 w2 -> infixTest w1 "-gt" w2
+    TSIntLE w1 w2 -> infixTest w1 "-le" w2
+    TSIntGE w1 w2 -> infixTest w1 "-ge" w2
+  where
+    prefixTest str w = PP.string str <+> fmtWord fmt fmt w
+    infixTest w1 str w2 = fmtWord fmt fmt w1 <+> PP.string str <+> fmtWord fmt fmt w2
 
 formatStream :: Formatter -> StreamSpec -> Doc
 formatStream fmt (StreamSpec specs) =

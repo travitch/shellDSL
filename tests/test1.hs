@@ -6,7 +6,6 @@ import Data.Monoid
 
 import Shell
 import Shell.Bash
-import Shell.Internal
 
 main :: IO ()
 main = do
@@ -15,7 +14,7 @@ main = do
     run $ command "ls" [] |>> "/tmp/lsout"
     run $ command "wc" ["-l", "/etc/fstab"] @> (2, 1) |> "/tmp/fscount"
     h1 <- background $ command "md5sum" ["/dev/mem"]
-    whileM (testFileExists "/etc/mtab") $ do
+    whileM (testFileExists "/etc/mtab" *&&* testFileExists "/tmp") $ do
       run $ command "echo" ["loop"]
       return ()
     wait h1
