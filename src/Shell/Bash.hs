@@ -36,6 +36,10 @@ renderScript fmt s = BS.toLazyByteString $ sBuilder $ comp
   where
     comp = MS.execState (renderScriptM fmt s) emptyRenderState
 
+-- This function will have to handle the recursive traversal of block
+-- structures.  The formatters can't recurse within the Render monad,
+-- so we have to do it here.  Formatters will need to be flexible to
+-- return intermediate strings.
 renderScriptM :: Formatter -> Shell -> Render ()
 renderScriptM fmt = FR.iterM $ \f ->
   case f of
