@@ -22,6 +22,7 @@ data Formatter =
             , fmtStream :: Formatter -> StreamSpec -> String
               -- ^ Format IO redirection specifiers
             , fmtEscape :: String -> String
+            , fmtIndentation :: String
             }
 
 defaultFormatter :: Formatter
@@ -31,6 +32,7 @@ defaultFormatter = Formatter { fmtWord = formatWord
                              , fmtAction = formatAction
                              , fmtStream = formatStream
                              , fmtEscape = id
+                             , fmtIndentation = "  "
                              }
 
 formatAction :: Formatter -> Shell -> String
