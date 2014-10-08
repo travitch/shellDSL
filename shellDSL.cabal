@@ -16,7 +16,8 @@ library
   exposed-modules: Shell,
                    Shell.Bash,
                    Shell.Internal,
-                   Shell.Formatter.Base
+                   Shell.Formatter.Base,
+                   Shell.Render
   -- other-modules:
   build-depends:  base == 4.*,
                   containers,
