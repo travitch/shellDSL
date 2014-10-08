@@ -4,7 +4,9 @@ module Shell.Formatter.Base (
   defaultFormatter
   ) where
 
+import qualified Data.Foldable as F
 import Data.Monoid
+import qualified Data.Sequence as Seq
 import Text.Printf ( printf )
 import Text.PrettyPrint.Mainland as PP
 
@@ -57,7 +59,14 @@ formatAction fmt shell =
       in PP.string var <> PP.string "=$(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
 
 formatStream :: Formatter -> StreamSpec -> Doc
-formatStream _ _ = mempty
+formatStream fmt (StreamSpec specs) =
+  PP.spread $ map f $ F.toList specs
+  where
+    f s =
+      case s of
+        StreamFile 1 dst -> PP.string ">" <> fmtWord fmt fmt dst
+        StreamAppend 1 dst -> PP.string ">>" <> fmtWord fmt fmt dst
+        StreamFD src dst -> PP.ppr src <> PP.string ">&" <> PP.ppr dst
 
 formatCommand :: Formatter -> Command -> Doc
 formatCommand fmt cmd =
@@ -70,7 +79,7 @@ formatCommand fmt cmd =
     Sequence c1 c2 -> formatCommand fmt c1 <+> PP.string ";" <+> formatCommand fmt c2
 
 hasNoRedirections :: StreamSpec -> Bool
-hasNoRedirections _ = True
+hasNoRedirections (StreamSpec s) = Seq.null s
 
 formatCommandSpec :: Formatter -> CommandSpec -> Doc
 formatCommandSpec fmt spec =

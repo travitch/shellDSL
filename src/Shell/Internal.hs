@@ -1,4 +1,6 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 module Shell.Internal (
   -- * Running things
   run,
@@ -32,6 +34,7 @@ module Shell.Internal (
   BWord(..),
   BSpan(..),
   StreamSpec(..),
+  Stream(..),
   CommandSpec(..),
   Result(..),
   Async(..),
@@ -45,8 +48,6 @@ import qualified Control.Concurrent.Supply as U
 import qualified Control.Monad.Free as FR
 import qualified Control.Monad.State.Strict as MS
 import qualified Data.Foldable as F
-import Data.Map ( Map )
-import qualified Data.Map as M
 import Data.Monoid
 import Data.Sequence ( Seq )
 import qualified Data.Sequence as Seq
@@ -79,24 +80,22 @@ evalBody body = do
 -- * Named file
 --
 -- * Extracted from a 'Result'
-data Stream = StreamOut
-            | StreamErr
-            | StreamFile FilePath
-            | StreamAppend FilePath
-            | StreamFD Int
-            | StreamPipe
+data Stream = StreamFile Int BWord
+            | StreamAppend Int BWord
+            | StreamFD Int Int
+            | StreamPipe Int
             deriving (Eq, Ord, Show)
 
 -- | A specification of stream mappings.
 --
 -- Stdin is 0, stdout is 1, and stderr is 2.  Other streams are allowable.
 data StreamSpec =
-  StreamSpec { ssSpecs :: Map Int Stream }
+  StreamSpec { ssSpecs :: Seq Stream }
   deriving (Eq, Ord, Show)
 
 instance Monoid StreamSpec where
-  mempty = StreamSpec { ssSpecs = M.empty }
-  mappend s1 s2 = StreamSpec { ssSpecs = ssSpecs s2 `M.union` ssSpecs s1 }
+  mempty = StreamSpec { ssSpecs = Seq.empty }
+  mappend s1 s2 = StreamSpec { ssSpecs = ssSpecs s1 <> ssSpecs s2 }
 
 -- | Bash Words
 --
@@ -117,7 +116,10 @@ data BSpan = BString String
            deriving (Eq, Ord, Show)
 
 instance IsString BWord where
-  fromString s = BWord [BString s]
+  fromString = toBWord
+
+toBWord :: String -> BWord
+toBWord s = BWord [BString s]
 
 instance Monoid BWord where
   mempty = BWord []
@@ -305,7 +307,7 @@ command cmd args = Command cspec mempty
 src *|* sink =
   Pipe (modifyStreamSpec src (pipeStream 1)) (modifyStreamSpec sink (pipeStream 0))
   where
-    pipeStream i s = s { ssSpecs = M.insert i StreamPipe (ssSpecs s) }
+    pipeStream i s = s { ssSpecs = ssSpecs s Seq.|> StreamPipe i }
 
 (*||*) :: Command -> Command -> Command
 (*||*) = Or
@@ -318,23 +320,23 @@ src *|* sink =
 (#) = Sequence
 
 -- | Redirect stdout, overwriting the target file
-(|>) :: Command -> FilePath -> Command
+(|>) :: Command -> BWord -> Command
 c |> fp =
-  modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 1 (StreamFile fp) (ssSpecs s) }
+  modifyStreamSpec c $ \s -> s { ssSpecs = ssSpecs s Seq.|> StreamFile 1 fp }
 
 -- | Redirect stout, appending to the target file
-(|>>) :: Command -> FilePath -> Command
+(|>>) :: Command -> BWord -> Command
 c |>> fp =
-  modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 1 (StreamAppend fp) (ssSpecs s) }
+  modifyStreamSpec c $ \s -> s { ssSpecs = ssSpecs s Seq.|> StreamAppend 1 fp }
 
-(<|) :: Command -> FilePath -> Command
+(<|) :: Command -> BWord -> Command
 c <| fp =
-  modifyStreamSpec c $ \s -> s { ssSpecs = M.insert 0 (StreamFile fp) (ssSpecs s) }
+  modifyStreamSpec c $ \s -> s { ssSpecs = ssSpecs s Seq.|> StreamFile 0 fp }
 
 -- | Redirect the first fd to the second fd
 (@>) :: Command -> (Int, Int) -> Command
 c @> (src, dst) =
-  modifyStreamSpec c $ \s -> s { ssSpecs = M.insert src (StreamFD dst) (ssSpecs s) }
+  modifyStreamSpec c $ \s -> s { ssSpecs = ssSpecs s Seq.|> StreamFD src dst }
 
 -- | Wrap the given command in a subshell
 subshell :: Command -> Command
