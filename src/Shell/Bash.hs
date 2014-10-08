@@ -4,7 +4,7 @@ import qualified Control.Concurrent.Supply as U
 import qualified Control.Monad.Free as FR
 import qualified Control.Monad.State.Strict as MS
 import qualified Data.ByteString.Lazy as BS
-import qualified Data.ByteString.Builder as BS
+import qualified Data.ByteString.Lazy.Builder as BS
 import Data.Monoid
 import Text.Printf ( printf )
 
