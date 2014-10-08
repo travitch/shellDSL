@@ -39,15 +39,37 @@ renderScript fmt s = BS.toLazyByteString $ sBuilder $ comp
 renderScriptM :: Formatter -> Shell -> Render ()
 renderScriptM fmt = FR.iterM $ \f ->
   case f of
-    RunSync uid cmd next -> do
-      writeLineUID uid (fmtCommand fmt fmt cmd)
+    RunSync uid _ next -> do
+      writeLineUID uid (fmtAction fmt fmt (AnyShell f))
       next
-    RunAsync uid cmd next -> do
-      writeLineUID uid (printf "%s &" (fmtCommand fmt fmt cmd))
+    RunAsync uid _ next -> do
+      writeLineUID uid (fmtAction fmt fmt (AnyShell f))
       next
-    Wait _ (Async a) next -> do
-      writeLine (printf "wait # on %d" a)
+    Wait _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
       next
+    While _ _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    Until _ _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    If _ _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    SubBlock _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    GetExitCode _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    UnsetEnv _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    SetEnv _ _ _ next -> do
+      writeLine (fmtAction fmt fmt (AnyShell f))
+      next
+    Done -> return ()
 
 writeLine :: String -> Render ()
 writeLine line =
@@ -58,17 +80,3 @@ writeLineUID uid line =
   MS.modify $ \s -> s { sBuilder = sBuilder s <> BS.stringUtf8 line <> BS.stringUtf8 str }
   where
     str = printf " # (uid: %d)\n" uid
-
--- walkAST :: Shell -> IO ()
--- walkAST = FR.iterM $ \f ->
---   case f of
---     RunSync uid cmd next -> do
---       printf "%s # (%d)\n" (show cmd) uid
---       next
---     RunAsync uid cmd next -> do
---       printf "%s & # (%d)\n" (show cmd) uid
---       next
---     Wait _ (Async a) next -> do
---       printf "wait # on %d\n" a
---       next
---     Done -> return ()

@@ -1,5 +1,7 @@
+{-# LANGUAGE GADTs #-}
 module Shell.Formatter.Base (
   Formatter(..),
+  AnyShell(..),
   defaultFormatter
   ) where
 
@@ -9,11 +11,16 @@ import Text.Printf ( printf )
 
 import Shell.Internal
 
+data AnyShell where
+  AnyShell :: ShellF a -> AnyShell
+
 data Formatter =
   Formatter { fmtCommand :: Formatter -> Command -> String
               -- ^ Format individual commands, primarily connectives
             , fmtCommandSpec :: Formatter -> CommandSpec -> String
               -- ^ Format a command with its arguments
+            , fmtAction :: Formatter -> AnyShell -> String
+              -- ^ Format a top-level action (e.g., run, conditionals)
             , fmtWord :: Formatter -> BWord -> String
               -- ^ Format a word-like thing (string with interpolation)
             , fmtStream :: Formatter -> StreamSpec -> String
@@ -25,9 +32,18 @@ defaultFormatter :: Formatter
 defaultFormatter = Formatter { fmtWord = formatWord
                              , fmtCommand = formatCommand
                              , fmtCommandSpec = formatCommandSpec
+                             , fmtAction = formatAction
                              , fmtStream = formatStream
                              , fmtEscape = id
                              }
+
+formatAction :: Formatter -> AnyShell -> String
+formatAction fmt (AnyShell shell) =
+  case shell of
+    RunSync _ cmd _ -> fmtCommand fmt fmt cmd
+    RunAsync _ cmd _ -> printf "%s &" (fmtCommand fmt fmt cmd)
+    Wait _ (Async a) _ -> printf "wait # on %d" a
+
 
 formatStream :: Formatter -> StreamSpec -> String
 formatStream _ _ = ""
