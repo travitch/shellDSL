@@ -81,6 +81,9 @@ formatCommand fmt cmd =
     Or c1 c2 -> formatCommand fmt c1 <+> PP.string "||" <+> formatCommand fmt c2
     Sequence c1 c2 -> formatCommand fmt c1 <+> PP.string ";" <+> formatCommand fmt c2
     Pipe c1 c2 -> formatCommand fmt c1 <+> PP.string "|" <+> formatCommand fmt c2
+    SubShell c1 redirs
+      | hasNoRedirections redirs -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')'
+      | otherwise -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')' <+> fmtStream fmt fmt redirs
 
 hasNoRedirections :: StreamSpec -> Bool
 hasNoRedirections (StreamSpec s) = Seq.null s
