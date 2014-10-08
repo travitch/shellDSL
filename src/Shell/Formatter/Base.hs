@@ -4,25 +4,24 @@ module Shell.Formatter.Base (
   defaultFormatter
   ) where
 
-import qualified Data.List as L
 import Data.Monoid
 import Text.Printf ( printf )
+import Text.PrettyPrint.Mainland as PP
 
 import Shell.Internal
 
 data Formatter =
-  Formatter { fmtCommand :: Formatter -> Command -> String
+  Formatter { fmtCommand :: Formatter -> Command -> Doc
               -- ^ Format individual commands, primarily connectives
-            , fmtCommandSpec :: Formatter -> CommandSpec -> String
+            , fmtCommandSpec :: Formatter -> CommandSpec -> Doc
               -- ^ Format a command with its arguments
-            , fmtAction :: Formatter -> Shell -> String
+            , fmtAction :: Formatter -> Shell -> Doc
               -- ^ Format a top-level action (e.g., run, conditionals)
-            , fmtWord :: Formatter -> BWord -> String
+            , fmtWord :: Formatter -> BWord -> Doc
               -- ^ Format a word-like thing (string with interpolation)
-            , fmtStream :: Formatter -> StreamSpec -> String
+            , fmtStream :: Formatter -> StreamSpec -> Doc
               -- ^ Format IO redirection specifiers
-            , fmtEscape :: String -> String
-            , fmtIndentation :: String
+            , fmtIndentation :: Int
             }
 
 defaultFormatter :: Formatter
@@ -31,46 +30,52 @@ defaultFormatter = Formatter { fmtWord = formatWord
                              , fmtCommandSpec = formatCommandSpec
                              , fmtAction = formatAction
                              , fmtStream = formatStream
-                             , fmtEscape = id
-                             , fmtIndentation = "  "
+                             , fmtIndentation = 2
                              }
 
-formatAction :: Formatter -> Shell -> String
+
+formatAction :: Formatter -> Shell -> Doc
 formatAction fmt shell =
   case shell of
     RunSync _ cmd -> fmtCommand fmt fmt cmd
-    RunAsync _ cmd -> printf "%s &" (fmtCommand fmt fmt cmd)
-    Wait _ (Async a) -> printf "wait # on %d" a
+    RunAsync _ cmd -> fmtCommand fmt fmt cmd <+> PP.string "&"
+    Wait _ (Async a) -> PP.string $ printf "wait # on %d" a
+    While _ cond body ->
+      let bdoc = PP.stack $ map (formatAction fmt) body
+      in PP.string "while FIXME/COND; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
 --    SubBlock _ shell' _ -> printf "(\n%s\n)" (formatAction fmt (AnyShell shell'))
 
 
-formatStream :: Formatter -> StreamSpec -> String
-formatStream _ _ = ""
+formatStream :: Formatter -> StreamSpec -> Doc
+formatStream _ _ = mempty
 
-formatCommand :: Formatter -> Command -> String
+formatCommand :: Formatter -> Command -> Doc
 formatCommand fmt cmd =
   case cmd of
     Command cspec redirs
-      | null redirStr -> fmtCommandSpec fmt fmt cspec
-      | otherwise -> printf "%s %s" (fmtCommandSpec fmt fmt cspec) redirStr
-      where
-        redirStr = fmtStream fmt fmt redirs
-    And c1 c2 -> printf "%s && %s" (formatCommand fmt c1) (formatCommand fmt c2)
-    Or c1 c2 -> printf "%s || %s" (formatCommand fmt c1) (formatCommand fmt c2)
-    Sequence c1 c2 -> printf "%s ; %s" (formatCommand fmt c1) (formatCommand fmt c2)
+      | hasNoRedirections redirs -> fmtCommandSpec fmt fmt cspec
+      | otherwise -> fmtCommandSpec fmt fmt cspec <+> fmtStream fmt fmt redirs
+    And c1 c2 -> formatCommand fmt c1 <+> PP.string "&&" <+> formatCommand fmt c2
+    Or c1 c2 -> formatCommand fmt c1 <+> PP.string "||" <+> formatCommand fmt c2
+    Sequence c1 c2 -> formatCommand fmt c1 <+> PP.string ";" <+> formatCommand fmt c2
 
-formatCommandSpec :: Formatter -> CommandSpec -> String
-formatCommandSpec fmt spec = L.intercalate " " $ map (fmtWord fmt fmt) (commandName spec : commandArguments spec)
+hasNoRedirections :: StreamSpec -> Bool
+hasNoRedirections _ = True
+
+formatCommandSpec :: Formatter -> CommandSpec -> Doc
+formatCommandSpec fmt spec =
+  PP.spread $ map (fmtWord fmt fmt) (commandName spec : commandArguments spec)
 
 -- quote if there is a space in the string anywhere
-formatWord :: Formatter -> BWord -> String
+formatWord :: Formatter -> BWord -> Doc
 formatWord fmt (BWord spans) = mconcat $ map (formatSpan fmt) spans
 
 -- This obviously will need some work later to handle escaping and whatnot
-formatSpan :: Formatter -> BSpan -> String
+formatSpan :: Formatter -> BSpan -> Doc
 formatSpan fmt spn =
   case spn of
-    BString s -> s
-    BVariable s -> printf "${%s}" s
-    BUnsafeVariable s -> printf "${%s}" s
-    BCommand cmd -> printf "$(%s)" (fmtCommand fmt fmt cmd)
+    BString s -> PP.string s
+    BVariable s -> PP.string $ printf "${%s}" s
+    BUnsafeVariable s -> PP.string $ printf "${%s}" s
+    BCommand cmd -> PP.string "$(" <> (fmtCommand fmt fmt cmd) <> PP.string ")"
+

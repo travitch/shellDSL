@@ -5,6 +5,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Builder as BS
 import Data.Monoid
 import Text.Printf ( printf )
+import qualified Text.PrettyPrint.Mainland as PP
 
 import Shell.Internal
 import Shell.Formatter.Base
@@ -12,13 +13,13 @@ import Shell.Formatter.Base
 bashFormatter :: Formatter
 bashFormatter = defaultFormatter
 
-runBash :: ShellM () -> IO BS.ByteString
+runBash :: ShellM () -> IO String
 runBash st = do
   shell <- flattenShell st
   return $ renderScript bashFormatter shell
 
 data RenderState =
-  RenderState { sBuilder :: !BS.Builder
+  RenderState { sBuilder :: !PP.Doc
               , sFormat :: Formatter
               }
 
@@ -30,8 +31,8 @@ emptyRenderState fmt =
 
 type Render = MS.State RenderState
 
-renderScript :: Formatter -> [Shell] -> BS.ByteString
-renderScript fmt s = BS.toLazyByteString $ sBuilder comp
+renderScript :: Formatter -> [Shell] -> String
+renderScript fmt s = PP.pretty 0 $ sBuilder comp
   where
     comp = MS.execState (mapM_ renderScriptM s) (emptyRenderState fmt)
 
@@ -45,21 +46,18 @@ renderScriptM s = do
   case s of
     RunSync uid _ -> writeLineUID uid (fmtAction fmt fmt s)
     RunAsync uid _ -> writeLineUID uid (fmtAction fmt fmt s)
-    Wait {} -> writeLine (fmtAction fmt fmt s)
-    GetExitCode {} -> writeLine (fmtAction fmt fmt s)
-    UnsetEnv {} -> writeLine (fmtAction fmt fmt s)
-    SetEnv {} -> writeLine (fmtAction fmt fmt s)
+    _ -> writeLine (fmtAction fmt fmt s)
 
 -- FIXME: Write a withIndentation operator to add to the current
 -- indentation and then subtract when the scope is exited.  This way,
 -- formatters won't need to know about it
 
-writeLine :: String -> Render ()
-writeLine line =
-  MS.modify $ \s -> s { sBuilder = sBuilder s <> BS.stringUtf8 line <> BS.charUtf8 '\n' }
+writeLine :: PP.Doc -> Render ()
+writeLine doc =
+  MS.modify $ \s -> s { sBuilder = sBuilder s <> doc <> PP.line }
 
-writeLineUID :: Int -> String -> Render ()
-writeLineUID uid line =
-  MS.modify $ \s -> s { sBuilder = sBuilder s <> BS.stringUtf8 line <> BS.stringUtf8 str }
+writeLineUID :: Int -> PP.Doc -> Render ()
+writeLineUID uid doc =
+  MS.modify $ \s -> s { sBuilder = sBuilder s <> doc <> PP.string str <> PP.line }
   where
-    str = printf " # (uid: %d)\n" uid
+    str = printf " # (uid: %d)" uid

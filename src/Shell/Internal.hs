@@ -6,6 +6,7 @@ module Shell.Internal (
   wait,
   setEnv,
   unsetEnv,
+  while,
   -- * Strings and names
   envRef,
   unsafeEnvRef,
@@ -23,6 +24,7 @@ module Shell.Internal (
   (@>),
   subshell,
   -- * Internal
+  Condition(..),
   BWord(..),
   BSpan(..),
   StreamSpec(..),
@@ -328,7 +330,20 @@ flattenM = FR.iterM $ \f ->
     GetExitCodeF uid r next -> appendShell (GetExitCode uid r) >> next
     UnsetEnvF uid str next -> appendShell (UnsetEnv uid str) >> next
     SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
+    WhileF uid cond body next -> do
+      body' <- nestedBlock body
+      appendShell (While uid cond body')
+      next
     Done -> return ()
+
+nestedBlock :: FreeShell -> Flatten [Shell]
+nestedBlock f = do
+  s0 <- MS.get
+  MS.put emptyFlatState
+  flattenM f
+  s1 <- MS.get
+  MS.put s0
+  return $ F.toList $ sShells s1
 
 appendShell :: Shell -> Flatten ()
 appendShell sh = MS.modify $ \s -> s { sShells = sShells s Seq.|> sh }

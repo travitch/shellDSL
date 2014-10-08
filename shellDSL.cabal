@@ -22,6 +22,7 @@ library
                   containers,
                   mtl,
                   bytestring >= 0.10 && < 0.11,
+                  mainland-pretty >= 0.2 && < 0.3,
                   concurrent-supply,
                   free >= 4 && < 5
   hs-source-dirs: src

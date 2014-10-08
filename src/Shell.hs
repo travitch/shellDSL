@@ -5,6 +5,8 @@ module Shell (
   wait,
   setEnv,
   unsetEnv,
+  -- * Control flow
+  while,
   -- * Referencing things
   envRef,
   unsafeEnvRef,
