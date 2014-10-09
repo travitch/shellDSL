@@ -132,6 +132,7 @@ formatStream fmt (StreamSpec specs) =
         StreamAppend fd dst -> PP.ppr fd <> PP.string ">>" <> fmtWord fmt fmt dst
         StreamFD src dst -> PP.ppr src <> PP.string ">&" <> PP.ppr dst
 
+-- Bash can do better in tests by using && and || inside of [[ ]]
 formatCommand :: Formatter -> Command -> Doc
 formatCommand fmt cmd =
   case cmd of
