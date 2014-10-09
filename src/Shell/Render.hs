@@ -2,7 +2,6 @@ module Shell.Render ( renderScript ) where
 
 import qualified Control.Monad.State.Strict as MS
 import Data.Monoid
-import Text.Printf ( printf )
 import qualified Text.PrettyPrint.Mainland as PP
 
 import qualified Shell.Analysis as A
@@ -39,21 +38,8 @@ renderScript fmt s =
 renderScriptM :: A.Analysis -> Shell -> Render ()
 renderScriptM ares s = do
   fmt <- MS.gets sFormat
-  case s of
-    RunSync uid _ -> writeLineUID uid (fmtAction fmt fmt ares s)
-    RunAsync uid _ -> writeLineUID uid (fmtAction fmt fmt ares s)
-    _ -> writeLine (fmtAction fmt fmt ares s)
-
--- FIXME: Write a withIndentation operator to add to the current
--- indentation and then subtract when the scope is exited.  This way,
--- formatters won't need to know about it
+  writeLine (fmtAction fmt fmt ares s)
 
 writeLine :: PP.Doc -> Render ()
 writeLine doc =
   MS.modify' $ \s -> s { sBuilder = sBuilder s <> doc <> PP.line }
-
-writeLineUID :: Int -> PP.Doc -> Render ()
-writeLineUID uid doc =
-  MS.modify' $ \s -> s { sBuilder = sBuilder s <> doc <> PP.string str <> PP.line }
-  where
-    str = printf " # (uid: %d)" uid
