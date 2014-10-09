@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Shell.Optimize (
   optimize,
   Optimizer(..),
@@ -68,11 +69,34 @@ optAndTrue _ c =
           return lhs
     _ -> return c
 
+rightmostCommand :: Command -> Command
+rightmostCommand cmd =
+  case cmd of
+    Command {} -> cmd
+    And _ c -> rightmostCommand c
+    Or _ c -> rightmostCommand c
+    Pipe _ c -> rightmostCommand c
+    Sequence _ c -> rightmostCommand c
+    SubShell {} -> cmd
+    Test {} -> cmd
+
+replaceRightmostCommand :: Command -> Command -> Command
+replaceRightmostCommand root new =
+  case root of
+    Command {} -> new
+    And lhs c -> And lhs (replaceRightmostCommand c new)
+    Or lhs c -> Or lhs (replaceRightmostCommand c new)
+    Pipe lhs c -> Pipe lhs (replaceRightmostCommand c new)
+    Sequence lhs c -> Sequence lhs (replaceRightmostCommand c new)
+    SubShell {} -> new
+    Test {} -> new
+
 -- | Turn @grep foo | wc -l@ into @grep -c foo@
 optGrepWc :: Optimizer -> Command -> Diagnostics Command
 optGrepWc _ c =
   case c of
-    Pipe (Command grepspec grepstreams) (Command wcspec wcstreams)
+    -- Pipe (Command grepspec grepstreams) (Command wcspec wcstreams)
+    Pipe rm@(rightmostCommand -> Command grepspec grepstreams) (Command wcspec wcstreams)
       | and [ commandName wcspec == "wc"
             , commandArguments wcspec == ["-l"]
             , commandName grepspec == "grep"
@@ -80,7 +104,7 @@ optGrepWc _ c =
             ] -> do
           let grep' = grepspec { commandArguments = "-c" : commandArguments grepspec }
           diag "Simplifying `grep [foo] | wc -l` into `grep -c foo`"
-          return $ Command grep' (grepstreams <> wcstreams)
+          return $ replaceRightmostCommand rm (Command grep' (grepstreams <> wcstreams))
     _ -> return c
 
 isConstantCommand :: CommandSpec -> BWord -> Bool

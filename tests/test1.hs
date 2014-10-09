@@ -31,6 +31,7 @@ main = do
     run shared
     run $ subshell shared |> "/dev/null"
     run $ command "grep" ["ext4", "/etc/fstab"] *|* command "wc" ["-l"]
+    run $ command "dmesg" [] *|* command "grep" ["ext4"] *|* command "wc" ["-l"]
     return ()
   mapM_ (IO.hPrint IO.stderr) diags
   case mscript of
