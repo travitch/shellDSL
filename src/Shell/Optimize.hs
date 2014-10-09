@@ -69,6 +69,22 @@ optAndTrue _ c =
           return lhs
     _ -> return c
 
+-- | Turn @grep foo | wc -l@ into @grep -c foo@
+optGrepWc :: Optimizer -> Command -> Diagnostics Command
+optGrepWc _ c =
+  case c of
+    -- Pipe (Command grepspec grepstreams) (Command wcspec wcstreams)
+    Pipe rm@(rightmostCommand -> Command grepspec grepstreams) (Command wcspec wcstreams)
+      | and [ commandName wcspec == "wc"
+            , commandArguments wcspec == ["-l"]
+            , commandName grepspec == "grep"
+            , not ("-c" `elem` commandArguments grepspec)
+            ] -> do
+          let grep' = grepspec { commandArguments = "-c" : commandArguments grepspec }
+          diag "Simplifying `grep [foo] | wc -l` into `grep -c foo`"
+          return $ replaceRightmostCommand rm (Command grep' (grepstreams <> wcstreams))
+    _ -> return c
+
 rightmostCommand :: Command -> Command
 rightmostCommand cmd =
   case cmd of
@@ -90,22 +106,6 @@ replaceRightmostCommand root new =
     Sequence lhs c -> Sequence lhs (replaceRightmostCommand c new)
     SubShell {} -> new
     Test {} -> new
-
--- | Turn @grep foo | wc -l@ into @grep -c foo@
-optGrepWc :: Optimizer -> Command -> Diagnostics Command
-optGrepWc _ c =
-  case c of
-    -- Pipe (Command grepspec grepstreams) (Command wcspec wcstreams)
-    Pipe rm@(rightmostCommand -> Command grepspec grepstreams) (Command wcspec wcstreams)
-      | and [ commandName wcspec == "wc"
-            , commandArguments wcspec == ["-l"]
-            , commandName grepspec == "grep"
-            , not ("-c" `elem` commandArguments grepspec)
-            ] -> do
-          let grep' = grepspec { commandArguments = "-c" : commandArguments grepspec }
-          diag "Simplifying `grep [foo] | wc -l` into `grep -c foo`"
-          return $ replaceRightmostCommand rm (Command grep' (grepstreams <> wcstreams))
-    _ -> return c
 
 isConstantCommand :: CommandSpec -> BWord -> Bool
 isConstantCommand cspec name = commandName cspec == name && null (commandArguments cspec)
