@@ -12,13 +12,14 @@ main :: IO ()
 main = do
   (mscript, diags) <- runBash $ do
     run $ command "ls" ["-l", "-h"] |> "/tmp/lsout" *||* command "false" []
-    run $ command "ls" [] |>> "/tmp/lsout"
+    lsec <- run $ command "ls" [] |>> "/tmp/lsout"
     run $ command "wc" ["-l", "/etc/fstab"] @> (2, 1) |> "/tmp/fscount"
     h1 <- background $ command "md5sum" ["/dev/mem"]
     whileM (testFileExists "/etc/mtab" *&&* testFileExists "/tmp") $ do
       run $ command "echo" ["loop"]
       return ()
     wait h1
+    run $ command "echo" [exitCode lsec]
     subshellCaptureM "BAR" $ do
       run $ command "cat" ["/etc/fstab"]
       return ()
