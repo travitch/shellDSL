@@ -2,9 +2,12 @@
 
 This package defines a DSL for generating shell scripts.
 
-It will not support all shell features.  Instead, it will support many
-features and enable scripts written in the DSL to be compiled down to
-different formats including:
+The goal is to make it easier to write safe and correct shell scripts.
+Quoting will be automatically managed.  There will also be some
+support for trying to automatically get numeric vs. string comparisons
+correct.  It will not support all shell features.  Instead, it will
+support many features and enable scripts written in the DSL to be
+compiled down to different formats including:
 
  * bash
  * POSIX shell
