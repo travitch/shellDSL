@@ -3,6 +3,7 @@
 module Main ( main ) where
 
 import Data.Monoid
+import qualified System.IO as IO
 
 import Shell
 import Shell.Formatter.Bash
@@ -29,7 +30,7 @@ main = do
     run shared
     run $ subshell shared |> "/dev/null"
     return ()
-  mapM_ print diags
+  mapM_ (IO.hPrint IO.stderr) diags
   case mscript of
     Nothing -> putStrLn "Error"
     Just script -> putStrLn script
