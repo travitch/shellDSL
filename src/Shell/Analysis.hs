@@ -4,11 +4,15 @@
 -- errors and providing information to support code generation
 module Shell.Analysis (
   Analysis(..),
-  analyze
+  analyze,
+  requiresPid,
+  requiresExitCode,
+  errors
   ) where
 
 import Control.Monad ( unless )
 import qualified Control.Monad.State.Strict as MS
+import qualified Data.Foldable as F
 import Data.IntSet ( IntSet )
 import qualified Data.IntSet as IS
 import Data.Sequence ( Seq )
@@ -27,6 +31,22 @@ data Analysis =
            , aMustDefinedEnvVars :: !(Set String)
            , aErrors :: !(Seq Diagnostic)
            }
+
+errors :: Analysis -> [Diagnostic]
+errors = F.toList . aErrors
+
+requiresPid :: Analysis -> Shell -> Bool
+requiresPid a sh =
+  case sh of
+    RunAsync uid _ -> uid `IS.member` aRequiredPID a
+    _ -> False
+
+requiresExitCode :: Analysis -> Shell -> Bool
+requiresExitCode a sh =
+  case sh of
+    RunSync uid _ -> uid `IS.member` aRequiredExitCode a
+    Wait uid _ -> uid `IS.member` aRequiredExitCode a
+    _ -> False
 
 type M = MS.State Analysis
 
@@ -49,8 +69,10 @@ analyzeAction sh =
   case sh of
     RunSync _ cmd -> analyzeCommand cmd
     RunAsync _ cmd -> analyzeCommand cmd
-    -- Syntactically, wait can only refer to valid values.
-    Wait {} -> return ()
+    Wait _ (Async aid) ->
+      -- Syntactically, wait can only refer to valid values, so we
+      -- just record the PID reference.
+      MS.modify' $ \s -> s { aRequiredPID = IS.insert aid (aRequiredPID s) }
     UnsetEnv _ vname ->
       MS.modify' $ \s -> s { aMayDefinedEnvVars = S.delete vname (aMayDefinedEnvVars s)
                            , aMustDefinedEnvVars = S.delete vname (aMustDefinedEnvVars s)
@@ -73,7 +95,7 @@ analyzeAction sh =
       analyzeCommand cmd
       mapM_ analyzeAction body
       controlFlowMerge s0
-    SubBlock _ _ body -> do
+    SubBlock _ mcap body -> do
       -- Here we have an interesting case - environment effects in the
       -- body do not propagate to the caller.
       --
@@ -84,6 +106,10 @@ analyzeAction sh =
       MS.modify' $ \now -> now { aMustDefinedEnvVars = aMustDefinedEnvVars s0
                                , aMayDefinedEnvVars = aMayDefinedEnvVars s0
                                }
+      F.forM_ mcap $ \capvar -> do
+        MS.modify' $ \now -> now { aMustDefinedEnvVars = S.insert capvar (aMustDefinedEnvVars now)
+                                 , aMayDefinedEnvVars = S.insert capvar (aMayDefinedEnvVars now)
+                                 }
 
 -- | Merge flow sensitive facts after a control flow merge point.
 --
@@ -107,16 +133,66 @@ analyzeCommand cmd =
 
 -- | If a referenced environment variable is not defined, report an error
 analyzeBWord :: BWord -> M ()
-analyzeBWord = undefined
+analyzeBWord = mapM_ analyzeBSpan . unWord
+
+analyzeBSpan :: BSpan -> M ()
+analyzeBSpan bs =
+  case bs of
+    BVariable vname -> do
+      s <- MS.get
+      -- This diagnostic will be much better once it has location
+      -- information attached
+      unless (S.member vname (aMayDefinedEnvVars s)) $ do
+        recordError $ printf "Variable `%s` is not definitely assigned" vname
+    BExitCode (Result rid) ->
+      MS.modify' $ \s -> s { aRequiredExitCode = IS.insert rid (aRequiredExitCode s)
+                           }
+    BPID (Async aid) ->
+      MS.modify' $ \s -> s { aRequiredPID = IS.insert aid (aRequiredPID s) }
+    _ -> return ()
 
 analyzeCommandSpec :: CommandSpec -> M ()
 analyzeCommandSpec cspec = analyzeBWord (commandName cspec) >> mapM_ analyzeBWord (commandArguments cspec)
 
 analyzeTestSpec :: TestSpec -> M ()
-analyzeTestSpec = undefined
+analyzeTestSpec ts =
+  case ts of
+    TSFileExists bw -> analyzeBWord bw
+    TSFileIsRegular bw -> analyzeBWord bw
+    TSFileIsDirectory bw -> analyzeBWord bw
+    TSFileIsSymlink bw -> analyzeBWord bw
+    TSPipeExists bw -> analyzeBWord bw
+    TSFileIsReadableY bw -> analyzeBWord bw
+    TSFileNotEmpty bw -> analyzeBWord bw
+    TSFDOpenOnTerminal bw -> analyzeBWord bw
+    TSFileWritableY bw -> analyzeBWord bw
+    TSFileExecutableY bw -> analyzeBWord bw
+    TSFileEffectivelyOwnedY bw -> analyzeBWord bw
+    TSFileEffectivelyOwnedG bw -> analyzeBWord bw
+    TSFileNewer bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSFileOlder bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSStringEmpty bw -> analyzeBWord bw
+    TSStringNotEmpty bw -> analyzeBWord bw
+    TSStringIdentical bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSStringNotIdentical bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSStringLT bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSStringGT bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSNegate ts' -> analyzeTestSpec ts'
+    TSIntEq bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSIntNeq bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSIntLT bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSIntGT bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSIntLE bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
+    TSIntGE bw1 bw2 -> analyzeBWord bw1 >> analyzeBWord bw2
 
 analyzeStreamSpec :: StreamSpec -> M ()
-analyzeStreamSpec = undefined
+analyzeStreamSpec (StreamSpec specs) = F.mapM_ analyzeStream specs
+  where
+    analyzeStream s =
+      case s of
+        StreamFile _ bw -> analyzeBWord bw
+        StreamAppend _ bw -> analyzeBWord bw
+        StreamFD _ _ -> return ()
 
 recordError :: String -> M ()
 recordError msg =

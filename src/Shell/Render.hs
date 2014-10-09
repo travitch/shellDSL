@@ -5,6 +5,8 @@ import Data.Monoid
 import Text.Printf ( printf )
 import qualified Text.PrettyPrint.Mainland as PP
 
+import qualified Shell.Analysis as A
+import qualified Shell.Diagnostic as D
 import Shell.Internal
 import Shell.Formatter.Base
 
@@ -21,22 +23,26 @@ emptyRenderState fmt =
 
 type Render = MS.State RenderState
 
-renderScript :: Formatter -> [Shell] -> String
-renderScript fmt s = PP.pretty 0 $ sBuilder comp
+renderScript :: Formatter -> [Shell] -> Either [D.Diagnostic] String
+renderScript fmt s =
+  case A.errors ares of
+    [] -> Right $ PP.pretty 0 $ sBuilder comp
+    errs -> Left errs
   where
-    comp = MS.execState (mapM_ renderScriptM s) (emptyRenderState fmt)
+    comp = MS.execState (mapM_ (renderScriptM ares) s) (emptyRenderState fmt)
+    ares = A.analyze s
 
 -- This function will have to handle the recursive traversal of block
 -- structures.  The formatters can't recurse within the Render monad,
 -- so we have to do it here.  Formatters will need to be flexible to
 -- return intermediate strings.
-renderScriptM :: Shell -> Render ()
-renderScriptM s = do
+renderScriptM :: A.Analysis -> Shell -> Render ()
+renderScriptM ares s = do
   fmt <- MS.gets sFormat
   case s of
-    RunSync uid _ -> writeLineUID uid (fmtAction fmt fmt s)
-    RunAsync uid _ -> writeLineUID uid (fmtAction fmt fmt s)
-    _ -> writeLine (fmtAction fmt fmt s)
+    RunSync uid _ -> writeLineUID uid (fmtAction fmt fmt ares s)
+    RunAsync uid _ -> writeLineUID uid (fmtAction fmt fmt ares s)
+    _ -> writeLine (fmtAction fmt fmt ares s)
 
 -- FIXME: Write a withIndentation operator to add to the current
 -- indentation and then subtract when the scope is exited.  This way,

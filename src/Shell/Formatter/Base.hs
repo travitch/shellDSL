@@ -9,6 +9,7 @@ import Data.Monoid
 import Text.Printf ( printf )
 import Text.PrettyPrint.Mainland as PP
 
+import qualified Shell.Analysis as A
 import Shell.Internal
 
 data Formatter =
@@ -16,13 +17,17 @@ data Formatter =
               -- ^ Format individual commands, primarily connectives
             , fmtCommandSpec :: Formatter -> CommandSpec -> Doc
               -- ^ Format a command with its arguments
-            , fmtAction :: Formatter -> Shell -> Doc
+            , fmtAction :: Formatter -> A.Analysis -> Shell -> Doc
               -- ^ Format a top-level action (e.g., run, conditionals)
             , fmtWord :: Formatter -> BWord -> Doc
               -- ^ Format a word-like thing (string with interpolation)
             , fmtStream :: Formatter -> StreamSpec -> Doc
               -- ^ Format IO redirection specifiers
             , fmtTest :: Formatter -> TestSpec -> Doc
+            , fmtPidCapture :: Formatter -> Int -> Doc
+              -- ^ The code required to capture the PID of the preceding async command
+            , fmtExitCodeCapture :: Formatter -> Int -> Doc
+              -- ^ The code required to capture the exit code of the preceding process
             , fmtIndentation :: Int
             }
 
@@ -33,30 +38,49 @@ defaultFormatter = Formatter { fmtWord = formatWord
                              , fmtAction = formatAction
                              , fmtStream = formatStream
                              , fmtTest = formatTest
+                             , fmtPidCapture = formatPidCapture
+                             , fmtExitCodeCapture = formatExitCodeCapture
                              , fmtIndentation = 2
                              }
 
+formatPidCapture :: Formatter -> Int -> Doc
+formatPidCapture _ uid = PP.string "PID" <> PP.ppr uid <> PP.string "=$!"
 
-formatAction :: Formatter -> Shell -> Doc
-formatAction fmt shell =
+formatExitCodeCapture :: Formatter -> Int -> Doc
+formatExitCodeCapture _ uid = PP.string "EXITCODE" <> PP.ppr uid <> PP.string "=$?"
+
+formatAction :: Formatter -> A.Analysis -> Shell -> Doc
+formatAction fmt ares shell =
   case shell of
-    RunSync _ cmd -> fmtCommand fmt fmt cmd
-    RunAsync _ cmd -> fmtCommand fmt fmt cmd <+> PP.string "&"
-    Wait _ (Async a) -> PP.string $ printf "wait # on %d" a
+    RunSync uid cmd
+      | A.requiresExitCode ares shell -> cdoc <//> fmtExitCodeCapture fmt fmt uid
+      | otherwise -> cdoc
+      where
+        cdoc = fmtCommand fmt fmt cmd
+    RunAsync uid cmd
+      | A.requiresPid ares shell -> cdoc <//> fmtPidCapture fmt fmt uid
+      | otherwise -> cdoc
+      where
+        cdoc = fmtCommand fmt fmt cmd <+> PP.string "&"
+    Wait uid (Async a)
+      | A.requiresExitCode ares shell -> wdoc <//> fmtExitCodeCapture fmt fmt uid
+      | otherwise -> wdoc
+      where
+        wdoc = PP.string "wait ${PID" <> PP.ppr a <> PP.char '}'
     SetEnv _ str val -> PP.string str <> PP.char '=' <> fmtWord fmt fmt val
     UnsetEnv _ str -> PP.string "unset" <+> PP.string str
     ExportEnv _ str -> PP.string "export" <+> PP.string str
     While _ cond body ->
-      let bdoc = PP.stack $ map (formatAction fmt) body
+      let bdoc = PP.stack $ map (formatAction fmt ares) body
       in PP.string "while" <+> fmtCommand fmt fmt cond <> PP.string "; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
     Until _ cond body ->
-      let bdoc = PP.stack $ map (formatAction fmt) body
+      let bdoc = PP.stack $ map (formatAction fmt ares) body
       in PP.string "until" <+> fmtCommand fmt fmt cond <> PP.string "; do" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string "done"
     SubBlock _ Nothing body ->
-      let bdoc = PP.stack $ map (formatAction fmt) body
+      let bdoc = PP.stack $ map (formatAction fmt ares) body
       in PP.string "(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
     SubBlock _ (Just var) body ->
-      let bdoc = PP.stack $ map (formatAction fmt) body
+      let bdoc = PP.stack $ map (formatAction fmt ares) body
       in PP.string var <> PP.string "=$(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
 
 formatTest :: Formatter -> TestSpec -> Doc

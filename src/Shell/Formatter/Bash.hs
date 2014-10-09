@@ -15,9 +15,11 @@ bashFormatter :: F.Formatter
 bashFormatter = F.defaultFormatter
 
 -- | Turn an abstract shell script specification into a bash script.
-runBash :: I.ShellM () -> IO (String, [D.Diagnostic])
+runBash :: I.ShellM () -> IO (Maybe String, [D.Diagnostic])
 runBash st = do
   shell <- I.flattenShell st
   let (sh, odiags) = O.optimize O.defaultOptimizer shell
-  return $ (R.renderScript bashFormatter sh, odiags)
+  case R.renderScript bashFormatter sh of
+    Left errs -> return (Nothing, errs ++ odiags)
+    Right script -> return (Just script, odiags)
 
