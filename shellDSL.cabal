@@ -17,11 +17,13 @@ library
                    Shell.Formatter.Bash,
                    Shell.Formatter.Base,
                    Shell.Internal,
+                   Shell.Optimize,
                    Shell.Render
   -- other-modules:
   build-depends:  base == 4.*,
                   containers,
                   mtl,
+                  transformers,
                   mainland-pretty >= 0.2 && < 0.3,
                   concurrent-supply,
                   free >= 4 && < 5

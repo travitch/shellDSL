@@ -111,19 +111,16 @@ formatCommand :: Formatter -> Command -> Doc
 formatCommand fmt cmd =
   case cmd of
     Command cspec redirs
-      | hasNoRedirections redirs -> fmtCommandSpec fmt fmt cspec
+      | isNullStreamSpec redirs -> fmtCommandSpec fmt fmt cspec
       | otherwise -> fmtCommandSpec fmt fmt cspec <+> fmtStream fmt fmt redirs
     And c1 c2 -> formatCommand fmt c1 <+> PP.string "&&" <+> formatCommand fmt c2
     Or c1 c2 -> formatCommand fmt c1 <+> PP.string "||" <+> formatCommand fmt c2
     Sequence c1 c2 -> formatCommand fmt c1 <+> PP.string ";" <+> formatCommand fmt c2
     Pipe c1 c2 -> formatCommand fmt c1 <+> PP.string "|" <+> formatCommand fmt c2
     SubShell c1 redirs
-      | hasNoRedirections redirs -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')'
+      | isNullStreamSpec redirs -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')'
       | otherwise -> PP.string "$(" <> formatCommand fmt c1 <> PP.char ')' <+> fmtStream fmt fmt redirs
     Test ts -> PP.string "[" <+> fmtTest fmt fmt ts <+> PP.string "]"
-
-hasNoRedirections :: StreamSpec -> Bool
-hasNoRedirections (StreamSpec s) = Seq.null s
 
 formatCommandSpec :: Formatter -> CommandSpec -> Doc
 formatCommandSpec fmt spec =

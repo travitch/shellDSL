@@ -36,6 +36,7 @@ module Shell.Internal (
   BWord(..),
   BSpan(..),
   StreamSpec(..),
+  isNullStreamSpec,
   Stream(..),
   CommandSpec(..),
   Result(..),
@@ -44,6 +45,7 @@ module Shell.Internal (
   Shell(..),
   TestSpec(..),
   flattenShell,
+  traverseShell,
   ShellM
   ) where
 
@@ -101,6 +103,9 @@ data StreamSpec =
 instance Monoid StreamSpec where
   mempty = StreamSpec { ssSpecs = Seq.empty }
   mappend s1 s2 = StreamSpec { ssSpecs = ssSpecs s1 <> ssSpecs s2 }
+
+isNullStreamSpec :: StreamSpec -> Bool
+isNullStreamSpec (StreamSpec s) = Seq.null s
 
 -- | Bash Words
 --
@@ -432,3 +437,30 @@ flattenShell st = do
   let freeShell = MS.evalStateT st (ShellState s)
       cmds = F.toList $ sShells $ MS.execState (flattenM freeShell) emptyFlatState
   return cmds
+
+-- | 'traverse' specialized to 'Shell', which is monomorphic and can't
+-- be an instance of the actual 'Traversable' class.  Nested
+-- structures are processed bottom-up.
+traverseShell :: (Applicative f, Monad f) => (Shell -> f Shell) -> Shell -> f Shell
+traverseShell f s =
+  case s of
+    While uid c body -> do
+      w <- While uid c <$> T.traverse (traverseShell f) body
+      f w
+    Until uid c body -> do
+      u <- Until uid c <$> T.traverse (traverseShell f) body
+      f u
+    SubBlock uid ms body -> do
+      b <- SubBlock uid ms <$> T.traverse (traverseShell f) body
+      f b
+    If uid cases melse -> do
+      cases' <- mapM (\(c, body) -> (c,) <$> T.traverse (traverseShell f) body) cases
+      melse' <- T.traverse (T.traverse (traverseShell f)) melse
+      f (If uid cases' melse')
+    RunSync {} -> f s
+    RunAsync {} -> f s
+    Wait {} -> f s
+    GetExitCode {} -> f s
+    UnsetEnv {} -> f s
+    SetEnv {} -> f s
+    ExportEnv {} -> f s
