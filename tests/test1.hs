@@ -9,7 +9,7 @@ import Shell.Formatter.Bash
 
 main :: IO ()
 main = do
-  script <- runBash $ do
+  (script, diags) <- runBash $ do
     run $ command "ls" ["-l", "-h"] |> "/tmp/lsout" *||* command "false" []
     run $ command "ls" [] |>> "/tmp/lsout"
     run $ command "wc" ["-l", "/etc/fstab"] @> (2, 1) |> "/tmp/fscount"
@@ -29,4 +29,5 @@ main = do
     run shared
     run $ subshell shared |> "/dev/null"
     return ()
+  mapM_ print diags
   putStrLn script

@@ -4,6 +4,7 @@ module Shell.Formatter.Bash (
   bashFormatter
   ) where
 
+import qualified Shell.Diagnostic as D
 import qualified Shell.Formatter.Base as F
 import qualified Shell.Internal as I
 import qualified Shell.Optimize as O
@@ -14,8 +15,9 @@ bashFormatter :: F.Formatter
 bashFormatter = F.defaultFormatter
 
 -- | Turn an abstract shell script specification into a bash script.
-runBash :: I.ShellM () -> IO String
+runBash :: I.ShellM () -> IO (String, [D.Diagnostic])
 runBash st = do
   shell <- I.flattenShell st
-  return $ R.renderScript bashFormatter (O.optimize O.defaultOptimizer shell)
+  let (sh, odiags) = O.optimize O.defaultOptimizer shell
+  return $ (R.renderScript bashFormatter sh, odiags)
 
