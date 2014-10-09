@@ -18,6 +18,7 @@ library
                    Shell.Diagnostic,
                    Shell.Formatter.Bash,
                    Shell.Formatter.Base,
+                   Shell.Formatter.POSIX,
                    Shell.Internal,
                    Shell.Optimize,
                    Shell.Render
