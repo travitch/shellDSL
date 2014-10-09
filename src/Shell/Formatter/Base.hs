@@ -6,7 +6,6 @@ module Shell.Formatter.Base (
 
 import qualified Data.Foldable as F
 import Data.Monoid
-import qualified Data.Sequence as Seq
 import Text.Printf ( printf )
 import Text.PrettyPrint.Mainland as PP
 
@@ -105,7 +104,6 @@ formatStream fmt (StreamSpec specs) =
         StreamAppend 1 dst -> PP.string ">>" <> fmtWord fmt fmt dst
         StreamAppend fd dst -> PP.ppr fd <> PP.string ">>" <> fmtWord fmt fmt dst
         StreamFD src dst -> PP.ppr src <> PP.string ">&" <> PP.ppr dst
-        StreamPipe _ -> mempty
 
 formatCommand :: Formatter -> Command -> Doc
 formatCommand fmt cmd =

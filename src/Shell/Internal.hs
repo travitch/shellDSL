@@ -90,7 +90,6 @@ evalBody body = do
 data Stream = StreamFile Int BWord
             | StreamAppend Int BWord
             | StreamFD Int Int
-            | StreamPipe Int
             deriving (Eq, Ord, Show)
 
 -- | A specification of stream mappings.
@@ -345,10 +344,7 @@ testFileExists = Test . TSFileExists
 -- "owns" the command resulting from the ||| operator is referenced by
 -- the RHS command.
 (*|*) :: Command -> Command -> Command
-src *|* sink =
-  Pipe (modifyStreamSpec src (pipeStream 1)) (modifyStreamSpec sink (pipeStream 0))
-  where
-    pipeStream i s = s { ssSpecs = ssSpecs s Seq.|> StreamPipe i }
+(*|*) = Pipe
 
 (*||*) :: Command -> Command -> Command
 (*||*) = Or
