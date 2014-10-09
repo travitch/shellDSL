@@ -12,7 +12,7 @@ import qualified Data.Foldable as F
 import Data.Sequence ( Seq )
 import qualified Data.Sequence as Seq
 
-data DiagState = DiagState { diags :: Seq Diagnostic }
+data DiagState = DiagState { diags :: !(Seq Diagnostic) }
 
 data Location = SrcLoc
               deriving (Eq, Ord, Show)
