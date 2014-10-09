@@ -4,6 +4,7 @@ module Shell.Formatter.Base (
   defaultFormatter
   ) where
 
+import qualified Data.Char as C
 import qualified Data.Foldable as F
 import Data.Monoid
 import Text.Printf ( printf )
@@ -163,10 +164,15 @@ formatWord fmt (BWord spans) = mconcat $ map (formatSpan fmt) spans
 formatSpan :: Formatter -> BSpan -> Doc
 formatSpan fmt spn =
   case spn of
-    BString s -> PP.string s
+    BString s | mustQuoteString s -> PP.squotes (PP.string s)
+              | otherwise -> PP.string s
     BVariable s -> PP.string $ printf "${%s}" s
     BUnsafeVariable s -> PP.string $ printf "${%s}" s
     BCommand cmd -> PP.string "$(" <> (fmtCommand fmt fmt cmd) <> PP.string ")"
     BExitCode (Result rid) -> PP.string "${EXITCODE" <> PP.ppr rid <> PP.char '}'
     BPID (Async aid) -> PP.string "${PID" <> PP.ppr aid <> PP.char '}'
 
+-- | We need to quote a string if it contains spaces OR if it contains
+-- something that would be expanded by bash.
+mustQuoteString :: String -> Bool
+mustQuoteString = any C.isSpace

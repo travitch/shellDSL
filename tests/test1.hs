@@ -33,6 +33,7 @@ main = do
     run $ subshell shared |> "/dev/null"
     run $ command "grep" ["ext4", "/etc/fstab"] *|* command "wc" ["-l"]
     run $ command "dmesg" [] *|* command "grep" ["ext4"] *|* command "wc" ["-l"]
+    run $ command "echo" ["literal with spaces in it!  Better escape"]
     return ()
   mapM_ (IO.hPrint IO.stderr) diags
   case mscript of
