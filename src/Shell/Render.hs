@@ -25,7 +25,7 @@ type Render = MS.State RenderState
 renderScript :: Formatter -> [Shell] -> Either [D.Diagnostic] String
 renderScript fmt s =
   case A.errors ares of
-    [] -> Right $ PP.pretty 0 $ sBuilder comp
+    [] -> Right $ PP.pretty 0 $ fmtPreamble fmt fmt PP.<//> sBuilder comp
     errs -> Left errs
   where
     comp = MS.execState (mapM_ (renderScriptM ares) s) (emptyRenderState fmt)

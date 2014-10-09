@@ -28,6 +28,8 @@ data Formatter =
               -- ^ The code required to capture the PID of the preceding async command
             , fmtExitCodeCapture :: Formatter -> Int -> Doc
               -- ^ The code required to capture the exit code of the preceding process
+            , fmtPreamble :: Formatter -> Doc
+              -- ^ Return a preamble document
             , fmtIndentation :: Int
             }
 
@@ -40,6 +42,7 @@ defaultFormatter = Formatter { fmtWord = formatWord
                              , fmtTest = formatTest
                              , fmtPidCapture = formatPidCapture
                              , fmtExitCodeCapture = formatExitCodeCapture
+                             , fmtPreamble = const mempty
                              , fmtIndentation = 2
                              }
 
