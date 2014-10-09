@@ -85,7 +85,7 @@ formatAction fmt ares shell =
     SubBlock _ (Just var) body ->
       let bdoc = PP.stack $ map (formatAction fmt ares) body
       in PP.string var <> PP.string "=$(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
-    Comment _ str -> PP.stack (map commentLine (lines str))
+    Comment _ str -> PP.line <> PP.stack (map commentLine (lines str))
     where
       commentLine l = PP.char '#' <+> PP.string l
 
