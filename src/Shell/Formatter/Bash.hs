@@ -17,7 +17,11 @@ bashFormatter :: F.Formatter
 bashFormatter = F.defaultFormatter { F.fmtPreamble = \_ -> preamble }
 
 preamble :: PP.Doc
-preamble = PP.string "set -e" PP.<//> PP.string "set -u" PP.<//> PP.line
+preamble = PP.stack [ PP.string "#!/bin/bash"
+                    , PP.string "set -e"
+                    , PP.string "set -u"
+                    , PP.line
+                    ]
 
 -- | Turn an abstract shell script specification into a bash script.
 runBash :: I.ShellM () -> IO (Maybe String, [D.Diagnostic])
