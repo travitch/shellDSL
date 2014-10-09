@@ -18,6 +18,8 @@ module Shell.Internal (
   envRef,
   unsafeEnvRef,
   capture,
+  pidOf,
+  exitCode,
   -- Commands
   Command(..),
   command,
@@ -46,6 +48,7 @@ module Shell.Internal (
   TestSpec(..),
   flattenShell,
   traverseShell,
+  traverseShell_,
   ShellM
   ) where
 
@@ -122,6 +125,10 @@ data BSpan = BString String
              -- ^ An unchecked variable reference
            | BCommand Command
              -- ^ Capture the output of a subshell
+           | BExitCode Result
+             -- ^ The exit code of a process
+           | BPID Async
+             -- ^ The PID of a process
            deriving (Eq, Ord, Show)
 
 instance IsString BWord where
@@ -133,6 +140,14 @@ toBWord s = BWord [BString s]
 instance Monoid BWord where
   mempty = BWord []
   mappend (BWord b1) (BWord b2) = BWord (b1 <> b2)
+
+-- | Reference the PID of a background process
+pidOf :: Async -> BWord
+pidOf a = BWord [BPID a]
+
+-- | Reference the exit code of a process
+exitCode :: Result -> BWord
+exitCode e = BWord [BExitCode e]
 
 -- | Create a reference to an environment variable.  The script
 -- generator will check to ensure that the variable MUST be defined.
@@ -220,7 +235,6 @@ data ShellF next = RunSyncF UID Command next
                  | SubBlockF UID (Maybe String) FreeShell next
                    -- ^ For block-level subshells, with optional output capture
                  | WaitF UID Async next
-                 | GetExitCodeF UID Result next
                  | UnsetEnvF UID String next
                  | SetEnvF UID String BWord next
                  | ExportEnvF UID String next
@@ -235,7 +249,6 @@ data Shell = RunSync UID Command
            | SubBlock UID (Maybe String) [Shell]
              -- ^ Subshell with an optional capture of the output
            | Wait UID Async
-           | GetExitCode UID Result
            | UnsetEnv UID String
            | SetEnv UID String BWord
            | ExportEnv UID String
@@ -392,7 +405,6 @@ flattenM = FR.iterM $ \f ->
     RunSyncF uid cmd next -> appendShell (RunSync uid cmd) >> next
     RunAsyncF uid cmd next -> appendShell (RunAsync uid cmd) >> next
     WaitF uid a next -> appendShell (Wait uid a) >> next
-    GetExitCodeF uid r next -> appendShell (GetExitCode uid r) >> next
     UnsetEnvF uid str next -> appendShell (UnsetEnv uid str) >> next
     SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
     ExportEnvF uid str next -> appendShell (ExportEnv uid str) >> next
@@ -425,7 +437,7 @@ nestedBlock f = do
   return $ F.toList $ sShells s1
 
 appendShell :: Shell -> Flatten ()
-appendShell sh = MS.modify $ \s -> s { sShells = sShells s Seq.|> sh }
+appendShell sh = MS.modify' $ \s -> s { sShells = sShells s Seq.|> sh }
 
 flattenShell :: ShellM () -> IO [Shell]
 flattenShell st = do
@@ -436,7 +448,10 @@ flattenShell st = do
 
 -- | 'traverse' specialized to 'Shell', which is monomorphic and can't
 -- be an instance of the actual 'Traversable' class.  Nested
--- structures are processed bottom-up.
+-- statements (e.g., loops) are processed after the statements in
+-- their bodies.
+--
+-- This evaluation order might not be suitable for everything.
 traverseShell :: (Applicative f, Monad f) => (Shell -> f Shell) -> Shell -> f Shell
 traverseShell f s =
   case s of
@@ -456,7 +471,11 @@ traverseShell f s =
     RunSync {} -> f s
     RunAsync {} -> f s
     Wait {} -> f s
-    GetExitCode {} -> f s
     UnsetEnv {} -> f s
     SetEnv {} -> f s
     ExportEnv {} -> f s
+
+traverseShell_ :: (Applicative f, Monad f) => (Shell -> f ()) -> Shell -> f ()
+traverseShell_ f s0 = traverseShell f' s0 >> return ()
+  where
+    f' s = f s >> return s

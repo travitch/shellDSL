@@ -44,10 +44,10 @@ renderScriptM s = do
 
 writeLine :: PP.Doc -> Render ()
 writeLine doc =
-  MS.modify $ \s -> s { sBuilder = sBuilder s <> doc <> PP.line }
+  MS.modify' $ \s -> s { sBuilder = sBuilder s <> doc <> PP.line }
 
 writeLineUID :: Int -> PP.Doc -> Render ()
 writeLineUID uid doc =
-  MS.modify $ \s -> s { sBuilder = sBuilder s <> doc <> PP.string str <> PP.line }
+  MS.modify' $ \s -> s { sBuilder = sBuilder s <> doc <> PP.string str <> PP.line }
   where
     str = printf " # (uid: %d)" uid

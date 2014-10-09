@@ -15,6 +15,8 @@ module Shell (
   envRef,
   unsafeEnvRef,
   capture,
+  pidOf,
+  exitCode,
   -- * Commands
   Command,
   command,

@@ -136,4 +136,6 @@ formatSpan fmt spn =
     BVariable s -> PP.string $ printf "${%s}" s
     BUnsafeVariable s -> PP.string $ printf "${%s}" s
     BCommand cmd -> PP.string "$(" <> (fmtCommand fmt fmt cmd) <> PP.string ")"
+    BExitCode (Result rid) -> PP.string "${EXITCODE" <> PP.ppr rid <> PP.char '}'
+    BPID (Async aid) -> PP.string "${PID" <> PP.ppr aid <> PP.char '}'
 
