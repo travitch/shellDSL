@@ -27,9 +27,10 @@ main = do
     exportEnv "BAR"
     setEnv "FOO" "5"
     unsetEnv "BAZ"
-    let shared = command "echo" ["BAR=" <> envRef "BAR"] *|* command "wc -c" []
+    let shared = command "echo" ["BAR=" <> envRef "BAR"] *|* command "wc" ["-c"]
     run shared
     run $ subshell shared |> "/dev/null"
+    run $ command "grep" ["ext4", "/etc/fstab"] *|* command "wc" ["-l"]
     return ()
   mapM_ (IO.hPrint IO.stderr) diags
   case mscript of

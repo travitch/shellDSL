@@ -6,10 +6,12 @@ module Shell.Optimize (
   (>=>*),
   -- * Pre-defined optimizations
   optAndTrue,
-  optOrFalse
+  optOrFalse,
+  optGrepWc
   ) where
 
 import Control.Applicative
+import Data.Monoid
 
 import Shell.Diagnostic
 import Shell.Internal
@@ -32,23 +34,16 @@ optimize :: Optimizer -> [Shell] -> ([Shell], [Diagnostic])
 optimize o prog = runDiagnostics $ mapM (optAction o o) prog
 
 optimizeCommand :: Optimizer -> Command -> Diagnostics Command
-optimizeCommand = optAndTrue >=>* optOrFalse
+optimizeCommand = optAndTrue >=>* optOrFalse >=>* optGrepWc
 
--- | Compose optimization functions
+-- | Compose optimization functions.
+--
+-- This is just like '(>=>)', but with support for threading the
+-- 'Optimizer' argument through.
 (>=>*) :: (Optimizer -> Command -> Diagnostics Command)
           -> (Optimizer -> Command -> Diagnostics Command)
           -> (Optimizer -> Command -> Diagnostics Command)
 f1 >=>* f2 = \o c -> f1 o c >>= f2 o
-
--- | Turn @command && true@ into @command@
-optAndTrue :: Optimizer -> Command -> Diagnostics Command
-optAndTrue _ c =
-  case c of
-    And lhs (Command cspec sspec)
-      | isConstantCommand cspec "true" && isNullStreamSpec sspec -> do
-          diag "Simplifying trivial `&& true`"
-          return lhs
-    _ -> return c
 
 diag :: String -> Diagnostics ()
 diag = recordDiagnostic . Diagnostic Nothing "Optimizer"
@@ -63,6 +58,30 @@ optOrFalse _ c =
           return lhs
     _ -> return c
 
+-- | Turn @command && true@ into @command@
+optAndTrue :: Optimizer -> Command -> Diagnostics Command
+optAndTrue _ c =
+  case c of
+    And lhs (Command cspec sspec)
+      | isConstantCommand cspec "true" && isNullStreamSpec sspec -> do
+          diag "Simplifying trivial `&& true`"
+          return lhs
+    _ -> return c
+
+-- | Turn @grep foo | wc -l@ into @grep -c foo@
+optGrepWc :: Optimizer -> Command -> Diagnostics Command
+optGrepWc _ c =
+  case c of
+    Pipe (Command grepspec grepstreams) (Command wcspec wcstreams)
+      | and [ commandName wcspec == "wc"
+            , commandArguments wcspec == ["-l"]
+            , commandName grepspec == "grep"
+            , not ("-c" `elem` commandArguments grepspec)
+            ] -> do
+          let grep' = grepspec { commandArguments = "-c" : commandArguments grepspec }
+          diag "Simplifying `grep [foo] | wc -l` into `grep -c foo`"
+          return $ Command grep' (grepstreams <> wcstreams)
+    _ -> return c
 
 isConstantCommand :: CommandSpec -> BWord -> Bool
 isConstantCommand cspec name = commandName cspec == name && null (commandArguments cspec)
