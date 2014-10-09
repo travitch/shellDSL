@@ -331,9 +331,6 @@ unsetEnv name = do
 -- | Wait on an asynchronous/backgrounded task.
 --
 -- The call to wait is synchronous and returns an exit code
---
--- FIXME: Result is not the right return value here since we can't use
--- this to access stdout/stderr.  We can only get an exit code.
 wait :: Async -> ShellM Result
 wait a = do
   uid <- takeId
