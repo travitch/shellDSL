@@ -6,6 +6,7 @@ module Shell (
   setEnv,
   unsetEnv,
   exportEnv,
+  comment,
   -- * Control flow
   whileM,
   untilM,

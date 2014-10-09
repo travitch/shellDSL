@@ -14,6 +14,7 @@ module Shell.Internal (
   untilM,
   subshellM,
   subshellCaptureM,
+  comment,
   -- * Strings and names
   envRef,
   unsafeEnvRef,
@@ -238,6 +239,7 @@ data ShellF next = RunSyncF UID Command next
                  | UnsetEnvF UID String next
                  | SetEnvF UID String BWord next
                  | ExportEnvF UID String next
+                 | CommentF UID String next
                  | Done
                  deriving (Eq, Show, Functor)
 
@@ -252,6 +254,7 @@ data Shell = RunSync UID Command
            | UnsetEnv UID String
            | SetEnv UID String BWord
            | ExportEnv UID String
+           | Comment UID String
 
 modifyStreamSpec :: Command -> (StreamSpec -> StreamSpec) -> Command
 modifyStreamSpec c f =
@@ -327,6 +330,12 @@ unsetEnv :: String -> ShellM ()
 unsetEnv name = do
   uid <- takeId
   FR.liftF (UnsetEnvF uid name ())
+
+-- | Introduce a comment into the script source
+comment :: String -> ShellM ()
+comment str = do
+  uid <- takeId
+  FR.liftF (CommentF uid str ())
 
 -- | Wait on an asynchronous/backgrounded task.
 --
@@ -405,6 +414,7 @@ flattenM = FR.iterM $ \f ->
     UnsetEnvF uid str next -> appendShell (UnsetEnv uid str) >> next
     SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
     ExportEnvF uid str next -> appendShell (ExportEnv uid str) >> next
+    CommentF uid str next -> appendShell (Comment uid str) >> next
     IfF uid tests melse next -> do
       tests' <- T.mapM (\(c, b) -> (c,) <$> nestedBlock b) tests
       melse' <- T.mapM nestedBlock melse
@@ -471,6 +481,7 @@ traverseShell f s =
     UnsetEnv {} -> f s
     SetEnv {} -> f s
     ExportEnv {} -> f s
+    Comment {} -> f s
 
 traverseShell_ :: (Applicative f, Monad f) => (Shell -> f ()) -> Shell -> f ()
 traverseShell_ f s0 = traverseShell f' s0 >> return ()

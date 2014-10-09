@@ -15,6 +15,7 @@ main = do
     lsec <- run $ command "ls" [] |>> "/tmp/lsout"
     run $ command "wc" ["-l", "/etc/fstab"] @> (2, 1) |> "/tmp/fscount"
     h1 <- background $ command "md5sum" ["/dev/mem"]
+    comment "This is an infinite loop\nNot the best idea"
     whileM (testFileExists "/etc/mtab" *&&* testFileExists "/tmp") $ do
       run $ command "echo" ["loop"]
       return ()

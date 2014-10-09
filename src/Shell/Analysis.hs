@@ -67,6 +67,7 @@ analyze prog = MS.execState action emptyState
 analyzeAction :: Shell -> M ()
 analyzeAction sh =
   case sh of
+    Comment {} -> return ()
     RunSync _ cmd -> analyzeCommand cmd
     RunAsync _ cmd -> analyzeCommand cmd
     Wait _ (Async aid) ->
