@@ -39,10 +39,14 @@ mkTest extra expectedOutputFile = T.testCase testName $ do
       Simple { expectedOutput = eout
              , diagnosticCount = dcount
              } -> do
-        (Just bashScript, diags) <- liftIO $ rbash
-        liftIO $ T.assertEqual "Diagnostic count" dcount (length diags)
+        (Just bashScript, bashDiags) <- liftIO $ rbash
+        liftIO $ T.assertEqual "Diagnostic count (bash)" dcount (length bashDiags)
         bashout <- liftIO $ P.readProcess "bash" [] bashScript
         liftIO $ T.assertEqual "Bash output" eout bashout
+        (Just shScript, shDiags) <- liftIO $ rsh
+        liftIO $ T.assertEqual "Diagnostic count (sh)" dcount (length shDiags)
+        shout <- liftIO $ P.readProcess "sh" [] shScript
+        liftIO $ T.assertEqual "Sh output" eout shout
     return ()
   case res of
     Left err -> T.assertFailure (show err)
