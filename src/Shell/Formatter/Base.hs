@@ -87,6 +87,8 @@ formatAction fmt ares shell =
       let bdoc = PP.stack $ map (formatAction fmt ares) body
       in PP.string var <> PP.string "=$(" <//> PP.indent (fmtIndentation fmt) bdoc <//> PP.string ")"
     Comment _ str -> PP.line <> PP.stack (map commentLine (lines str))
+    Exit _ Nothing -> PP.string "exit"
+    Exit _ (Just code) -> PP.string "exit" <+> fmtWord fmt fmt code
     where
       commentLine l = PP.char '#' <+> PP.string l
 

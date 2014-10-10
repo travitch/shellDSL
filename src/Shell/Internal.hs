@@ -15,6 +15,7 @@ module Shell.Internal (
   subshellM,
   subshellCaptureM,
   comment,
+  exit,
   -- * Strings and names
   envRef,
   unsafeEnvRef,
@@ -271,6 +272,7 @@ data ShellF next = RunSyncF UID Command next
                  | SetEnvF UID String BWord next
                  | ExportEnvF UID String next
                  | CommentF UID String next
+                 | ExitF UID (Maybe BWord) next
                  | Done
                  deriving (Eq, Show, Functor)
 
@@ -286,6 +288,7 @@ data Shell = RunSync UID Command
            | SetEnv UID String BWord
            | ExportEnv UID String
            | Comment UID String
+           | Exit UID (Maybe BWord)
 
 modifyStreamSpec :: Command -> (StreamSpec -> StreamSpec) -> Command
 modifyStreamSpec c f =
@@ -378,6 +381,11 @@ wait a = do
   _ <- FR.liftF (WaitF uid a res)
   return res
 
+exit :: Maybe BWord -> ShellM ()
+exit mexitcode = do
+  uid <- takeId
+  FR.liftF (ExitF uid mexitcode ())
+
 command :: BWord -> [BWord] -> Command
 command cmd args = Command cspec mempty
   where
@@ -446,6 +454,7 @@ flattenM = FR.iterM $ \f ->
     SetEnvF uid str val next -> appendShell (SetEnv uid str val) >> next
     ExportEnvF uid str next -> appendShell (ExportEnv uid str) >> next
     CommentF uid str next -> appendShell (Comment uid str) >> next
+    ExitF uid mid next -> appendShell (Exit uid mid) >> next
     IfF uid tests melse next -> do
       tests' <- T.mapM (\(c, b) -> (c,) <$> nestedBlock b) tests
       melse' <- T.mapM nestedBlock melse
@@ -513,6 +522,7 @@ traverseShell f s =
     SetEnv {} -> f s
     ExportEnv {} -> f s
     Comment {} -> f s
+    Exit {} -> f s
 
 traverseShell_ :: (Applicative f, Monad f) => (Shell -> f ()) -> Shell -> f ()
 traverseShell_ f s0 = traverseShell f' s0 >> return ()

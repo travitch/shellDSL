@@ -70,6 +70,8 @@ analyzeAction sh =
     Comment {} -> return ()
     RunSync _ cmd -> analyzeCommand cmd
     RunAsync _ cmd -> analyzeCommand cmd
+    Exit _ Nothing -> return ()
+    Exit _ (Just ec) -> analyzeBWord ec
     Wait _ (Async aid) ->
       -- Syntactically, wait can only refer to valid values, so we
       -- just record the PID reference.
