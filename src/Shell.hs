@@ -33,7 +33,9 @@ module Shell (
   -- * Tests
   testFileExists,
   -- * Diagnostics
-  Diagnostic
+  Diagnostic,
+  -- Other types
+  ShellM
   ) where
 
 import Prelude hiding ( until )
