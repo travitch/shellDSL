@@ -1,0 +1,3 @@
+Simple { expectedOutput = "*\n"
+       , diagnosticCount = 0
+       }
