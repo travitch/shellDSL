@@ -14,12 +14,17 @@ import Shell.Formatter.POSIX
 demoScript :: ShellM ()
 demoScript = do
   comment "A script demonstrating some features\nof this DSL"
+  setEnv "MTAB" "/etc/mtab"
   eres <- run $ command "echo" ["*Starting*"]
+  ahandle <- background $ command "md5sum" [unsafeEnvRef "HOME" <> "/android-sdk-linux.tar.bz2"]
+  -- ahandle <- background $ command "md5sum" [envRef "HOME" <> "/android-sdk-linux.tar.bz2"]
   run $ command "ls" ["/etc/" <> anyChars <> ".conf"] *|*
         command "grep" ["s"] *|*
         command "wc" ["-l"]
-  run $ command "cat" ["/etc/mtab"] *|* command "grep" ["ext4"]
+  run $ command "cat" [envRef "MTAB"] *|* command "grep" ["ext4"]
   run $ command "echo" ["\"echo\" exit code: ", exitCode eres]
+  md5res <- wait ahandle
+  run $ command "echo" ["\"md5sum\" exit code: ", exitCode md5res]
   return ()
 
 toString :: (ShellM () -> IO (Maybe String, [Diagnostic])) -> ShellM () -> IO String
@@ -36,8 +41,10 @@ main = do
   shScript <- toString runSh demoScript
   T.withSystemTempFile "script" $ \bscript bh -> do
     IO.hPutStr bh bashScript
+    writeFile "demo-bash.sh" bashScript
     T.withSystemTempFile "script" $ \sscript sh -> do
       IO.hPutStr sh shScript
+      writeFile "demo-posix.sh" shScript
       IO.hFlush bh
       IO.hFlush sh
       P.readProcess "pr" ["-W100", "-S      ", "-t", "-m", sscript, bscript] "" >>= IO.hPutStrLn IO.stdout
