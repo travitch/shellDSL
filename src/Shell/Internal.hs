@@ -21,6 +21,10 @@ module Shell.Internal (
   capture,
   pidOf,
   exitCode,
+  anyChars,
+  anyChar,
+  charSet,
+  negCharSet,
   -- Commands
   Command(..),
   command,
@@ -38,6 +42,7 @@ module Shell.Internal (
   -- * Internal
   BWord(..),
   BSpan(..),
+  Wildcard(..),
   StreamSpec(..),
   isNullStreamSpec,
   Stream(..),
@@ -130,10 +135,17 @@ data BSpan = BString String
              -- ^ The exit code of a process
            | BPID Async
              -- ^ The PID of a process
+           | BWildcard Wildcard
            deriving (Eq, Ord, Show)
 
 instance IsString BWord where
   fromString = toBWord
+
+data Wildcard = WQuestion
+              | WAsterisk
+              | WCharSet [Char]
+              | WNotCharSet [Char]
+              deriving (Eq, Ord, Show)
 
 toBWord :: String -> BWord
 toBWord s = BWord [BString s]
@@ -141,6 +153,20 @@ toBWord s = BWord [BString s]
 instance Monoid BWord where
   mempty = BWord []
   mappend (BWord b1) (BWord b2) = BWord (b1 <> b2)
+
+-- | Equivalent to the @*@ glob in shell
+anyChars :: BWord
+anyChars = BWord [BWildcard WAsterisk]
+
+-- | Equivalent to the @?@ glob in shell
+anyChar :: BWord
+anyChar = BWord [BWildcard WQuestion]
+
+charSet :: [Char] -> BWord
+charSet cs = BWord [BWildcard (WCharSet cs)]
+
+negCharSet :: [Char] -> BWord
+negCharSet cs = BWord [BWildcard (WNotCharSet cs)]
 
 -- | Reference the PID of a background process
 pidOf :: Async -> BWord

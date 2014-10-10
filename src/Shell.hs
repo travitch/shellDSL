@@ -18,6 +18,10 @@ module Shell (
   capture,
   pidOf,
   exitCode,
+  anyChars,
+  anyChar,
+  charSet,
+  negCharSet,
   -- * Commands
   Command,
   command,

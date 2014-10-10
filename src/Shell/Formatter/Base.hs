@@ -174,13 +174,20 @@ formatSpan fmt spn =
     BCommand cmd -> PP.string "$(" <> (fmtCommand fmt fmt cmd) <> PP.string ")"
     BExitCode (Result rid) -> PP.string "${EXITCODE" <> PP.ppr rid <> PP.char '}'
     BPID (Async aid) -> PP.string "${PID" <> PP.ppr aid <> PP.char '}'
+    BWildcard wc ->
+      case wc of
+        WQuestion -> PP.char '?'
+        WAsterisk -> PP.char '*'
+        -- TODO: Compression for the sequence if it is contiguous
+        WCharSet cs -> PP.char '[' <> PP.string cs <> PP.char ']'
+        WNotCharSet cs -> PP.string "[!" <> PP.string cs <> PP.char ']'
 
 -- | We need to quote a string if it contains spaces OR if it contains
 -- something that would be expanded by bash.
 mustQuoteString :: String -> Bool
 mustQuoteString s = or [ any C.isSpace s
-                       , rxMatch hasUnescapedDollar s
+                       , rxMatch hasUnescapedSpecial s
                        ]
   where
-    hasUnescapedDollar = RX.compile "(?<!\\\\)\\$" []
+    hasUnescapedSpecial = RX.compile "(?<!\\\\)[\\$\\*\\?\\[\\]]" []
     rxMatch rx str = isJust $ RX.match rx (fromString str) []
