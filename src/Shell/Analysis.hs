@@ -73,13 +73,13 @@ analyzeAction sh =
     Wait _ (Async aid) ->
       -- Syntactically, wait can only refer to valid values, so we
       -- just record the PID reference.
-      MS.modify' $ \s -> s { aRequiredPID = IS.insert aid (aRequiredPID s) }
+      MS.modify $ \s -> s { aRequiredPID = IS.insert aid (aRequiredPID s) }
     UnsetEnv _ vname ->
-      MS.modify' $ \s -> s { aMayDefinedEnvVars = S.delete vname (aMayDefinedEnvVars s)
+      MS.modify $ \s -> s { aMayDefinedEnvVars = S.delete vname (aMayDefinedEnvVars s)
                            , aMustDefinedEnvVars = S.delete vname (aMustDefinedEnvVars s)
                            }
     SetEnv _ vname _ ->
-      MS.modify' $ \s -> s { aMayDefinedEnvVars = S.insert vname (aMayDefinedEnvVars s)
+      MS.modify $ \s -> s { aMayDefinedEnvVars = S.insert vname (aMayDefinedEnvVars s)
                            , aMustDefinedEnvVars = S.insert vname (aMustDefinedEnvVars s)
                            }
     ExportEnv _ vname -> do
@@ -104,11 +104,11 @@ analyzeAction sh =
       -- the body since it cannot reference non-exported vars (can it?)
       s0 <- MS.get
       mapM_ analyzeAction body
-      MS.modify' $ \now -> now { aMustDefinedEnvVars = aMustDefinedEnvVars s0
+      MS.modify $ \now -> now { aMustDefinedEnvVars = aMustDefinedEnvVars s0
                                , aMayDefinedEnvVars = aMayDefinedEnvVars s0
                                }
       F.forM_ mcap $ \capvar -> do
-        MS.modify' $ \now -> now { aMustDefinedEnvVars = S.insert capvar (aMustDefinedEnvVars now)
+        MS.modify $ \now -> now { aMustDefinedEnvVars = S.insert capvar (aMustDefinedEnvVars now)
                                  , aMayDefinedEnvVars = S.insert capvar (aMayDefinedEnvVars now)
                                  }
 
@@ -117,7 +117,7 @@ analyzeAction sh =
 -- Right now, this is just the may/must def records
 controlFlowMerge :: Analysis -> M ()
 controlFlowMerge s0 =
-  MS.modify' $ \now -> now { aMustDefinedEnvVars = S.intersection (aMustDefinedEnvVars now) (aMustDefinedEnvVars s0)
+  MS.modify $ \now -> now { aMustDefinedEnvVars = S.intersection (aMustDefinedEnvVars now) (aMustDefinedEnvVars s0)
                            , aMayDefinedEnvVars = S.union (aMayDefinedEnvVars now) (aMayDefinedEnvVars s0)
                            }
 
@@ -146,10 +146,10 @@ analyzeBSpan bs =
       unless (S.member vname (aMayDefinedEnvVars s)) $ do
         recordError $ printf "Variable `%s` is not definitely assigned" vname
     BExitCode (Result rid) ->
-      MS.modify' $ \s -> s { aRequiredExitCode = IS.insert rid (aRequiredExitCode s)
+      MS.modify $ \s -> s { aRequiredExitCode = IS.insert rid (aRequiredExitCode s)
                            }
     BPID (Async aid) ->
-      MS.modify' $ \s -> s { aRequiredPID = IS.insert aid (aRequiredPID s) }
+      MS.modify $ \s -> s { aRequiredPID = IS.insert aid (aRequiredPID s) }
     _ -> return ()
 
 analyzeCommandSpec :: CommandSpec -> M ()
@@ -197,6 +197,6 @@ analyzeStreamSpec (StreamSpec specs) = F.mapM_ analyzeStream specs
 
 recordError :: String -> M ()
 recordError msg =
-  MS.modify' $ \s -> s { aErrors = aErrors s Seq.|> d }
+  MS.modify $ \s -> s { aErrors = aErrors s Seq.|> d }
   where
     d = Diagnostic Nothing "Analysis" msg

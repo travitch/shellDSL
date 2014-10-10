@@ -42,4 +42,4 @@ renderScriptM ares s = do
 
 writeLine :: PP.Doc -> Render ()
 writeLine doc =
-  MS.modify' $ \s -> s { sBuilder = sBuilder s <> doc <> PP.line }
+  MS.modify $ \s -> s { sBuilder = sBuilder s <> doc <> PP.line }

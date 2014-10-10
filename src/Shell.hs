@@ -31,9 +31,12 @@ module Shell (
   (@>),
   subshell,
   -- * Tests
-  testFileExists
+  testFileExists,
+  -- * Diagnostics
+  Diagnostic
   ) where
 
 import Prelude hiding ( until )
 
+import Shell.Diagnostic
 import Shell.Internal

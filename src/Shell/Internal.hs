@@ -444,7 +444,7 @@ nestedBlock f = do
   return $ F.toList $ sShells s1
 
 appendShell :: Shell -> Flatten ()
-appendShell sh = MS.modify' $ \s -> s { sShells = sShells s Seq.|> sh }
+appendShell sh = MS.modify $ \s -> s { sShells = sShells s Seq.|> sh }
 
 flattenShell :: ShellM () -> IO [Shell]
 flattenShell st = do

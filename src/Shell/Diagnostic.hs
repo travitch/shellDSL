@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Shell.Diagnostic (
   Diagnostics,
@@ -11,23 +12,24 @@ import qualified Control.Monad.State.Strict as MS
 import qualified Data.Foldable as F
 import Data.Sequence ( Seq )
 import qualified Data.Sequence as Seq
+import Data.Typeable ( Typeable )
 
 data DiagState = DiagState { diags :: !(Seq Diagnostic) }
 
 data Location = SrcLoc
-              deriving (Eq, Ord, Show)
+              deriving (Eq, Ord, Show, Typeable)
 
 data Diagnostic = Diagnostic { dLocation :: Maybe Location
                              , dComponent :: String
                              , dMessage :: String
                              }
-                deriving (Eq, Ord, Show)
+                deriving (Eq, Ord, Show, Typeable)
 
 newtype Diagnostics a = Diagnostics (MS.State DiagState a)
                       deriving (Functor, Applicative, Monad, MS.MonadState DiagState)
 
 recordDiagnostic :: Diagnostic -> Diagnostics ()
-recordDiagnostic d = MS.modify' $ \s -> s { diags = diags s Seq.|> d }
+recordDiagnostic d = MS.modify $ \s -> s { diags = diags s Seq.|> d }
 
 runDiagnostics :: Diagnostics a -> (a, [Diagnostic])
 runDiagnostics (Diagnostics action) =
