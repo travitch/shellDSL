@@ -193,6 +193,7 @@ analyzeStreamSpec (StreamSpec specs) = F.mapM_ analyzeStream specs
       case s of
         StreamFile _ bw -> analyzeBWord bw
         StreamAppend _ bw -> analyzeBWord bw
+        StreamInput bw -> analyzeBWord bw
         StreamFD _ _ -> return ()
 
 recordError :: String -> M ()

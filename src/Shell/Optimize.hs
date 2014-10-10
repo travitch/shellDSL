@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE ViewPatterns #-}
 module Shell.Optimize (
   optimize,
@@ -8,6 +9,7 @@ module Shell.Optimize (
   -- * Pre-defined optimizations
   optAndTrue,
   optOrFalse,
+  optCatPipe,
   optGrepWc
   ) where
 
@@ -35,7 +37,7 @@ optimize :: Optimizer -> [Shell] -> ([Shell], [Diagnostic])
 optimize o prog = runDiagnostics $ mapM (optAction o o) prog
 
 optimizeCommand :: Optimizer -> Command -> Diagnostics Command
-optimizeCommand = optAndTrue >=>* optOrFalse >=>* optGrepWc
+optimizeCommand = optAndTrue >=>* optOrFalse >=>* optGrepWc >=>* optCatPipe
 
 -- | Compose optimization functions.
 --
@@ -83,6 +85,17 @@ optGrepWc _ c =
           let grep' = grepspec { commandArguments = "-c" : commandArguments grepspec }
           diag "Simplifying `grep [foo] | wc -l` into `grep -c foo`"
           return $ replaceRightmostCommand rm (Command grep' (grepstreams <> wcstreams))
+    _ -> return c
+
+optCatPipe :: Optimizer -> Command -> Diagnostics Command
+optCatPipe _ c =
+  case c of
+    Pipe (Command cat cstreams) (Command cmdspec cmdstreams)
+      | commandName cat == "cat" && isNullStreamSpec cstreams
+      , [filename] <- commandArguments cat -> do
+--      , not (L.isPrefixOf "-" filename) -> do
+        diag "Simplifying `cat [foo] | command` to `command < foo`"
+        return $ Command cmdspec (cmdstreams <> streamSpec (StreamInput filename))
     _ -> return c
 
 rightmostCommand :: Command -> Command

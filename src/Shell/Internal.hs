@@ -44,6 +44,7 @@ module Shell.Internal (
   BSpan(..),
   Wildcard(..),
   StreamSpec(..),
+  streamSpec,
   isNullStreamSpec,
   Stream(..),
   CommandSpec(..),
@@ -99,6 +100,7 @@ evalBody body = do
 data Stream = StreamFile Int BWord
             | StreamAppend Int BWord
             | StreamFD Int Int
+            | StreamInput BWord
             deriving (Eq, Ord, Show)
 
 -- | A specification of stream mappings.
@@ -114,6 +116,9 @@ instance Monoid StreamSpec where
 
 isNullStreamSpec :: StreamSpec -> Bool
 isNullStreamSpec (StreamSpec s) = Seq.null s
+
+streamSpec :: Stream -> StreamSpec
+streamSpec s = StreamSpec (Seq.singleton s)
 
 -- | Bash Words
 --

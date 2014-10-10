@@ -135,6 +135,7 @@ formatStream fmt (StreamSpec specs) =
         StreamAppend 1 dst -> PP.string ">>" <> fmtWord fmt fmt dst
         StreamAppend fd dst -> PP.ppr fd <> PP.string ">>" <> fmtWord fmt fmt dst
         StreamFD src dst -> PP.ppr src <> PP.string ">&" <> PP.ppr dst
+        StreamInput src -> PP.string "<" <> fmtWord fmt fmt src
 
 -- Bash can do better in tests by using && and || inside of [[ ]]
 formatCommand :: Formatter -> Command -> Doc
@@ -182,4 +183,6 @@ formatSpan fmt spn =
 -- | We need to quote a string if it contains spaces OR if it contains
 -- something that would be expanded by bash.
 mustQuoteString :: String -> Bool
-mustQuoteString = not . all C.isAlphaNum
+mustQuoteString = not . all p
+  where
+    p c = C.isAlphaNum c || c `elem` ['-', '_', '.', '/']
