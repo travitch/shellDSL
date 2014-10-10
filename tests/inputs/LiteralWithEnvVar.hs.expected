@@ -1,0 +1,3 @@
+Simple { expectedOutput = "${SHELL}\n"
+       , diagnosticCount = 0
+       }
