@@ -6,12 +6,9 @@ module Shell.Formatter.Base (
 
 import qualified Data.Char as C
 import qualified Data.Foldable as F
-import Data.Maybe ( isJust )
 import Data.Monoid
-import Data.String ( fromString )
 import Text.Printf ( printf )
 import Text.PrettyPrint.Mainland as PP
-import qualified Text.Regex.PCRE.Light as RX
 
 import qualified Shell.Analysis as A
 import Shell.Internal
@@ -185,9 +182,4 @@ formatSpan fmt spn =
 -- | We need to quote a string if it contains spaces OR if it contains
 -- something that would be expanded by bash.
 mustQuoteString :: String -> Bool
-mustQuoteString s = or [ any C.isSpace s
-                       , rxMatch hasUnescapedSpecial s
-                       ]
-  where
-    hasUnescapedSpecial = RX.compile "(?<!\\\\)[\\$\\*\\?\\[\\]]" []
-    rxMatch rx str = isJust $ RX.match rx (fromString str) []
+mustQuoteString = not . all C.isAlphaNum
